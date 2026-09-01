@@ -592,11 +592,12 @@ function tripCard(t){
   if(t.status==='in_progress') actions += `<button class="btn btn-ghost btn-sm" data-act="complete" data-id="${t.id}">Complete</button>`;
   if(t.status!=='completed' && t.status!=='cancelled') actions += `<button class="btn btn-ghost btn-sm" data-act="cancel" data-id="${t.id}">Cancel</button>`;
   card.innerHTML = `
-    <div class="svc">${SERVICE_LABELS[t.service_type]||t.service_type}</div>
+    <div class="svc">${t.requested_vehicle ? 'Requested: '+t.requested_vehicle : 'No vehicle preference'}</div>
     <div class="cust">${t.customer_name}</div>
     ${t.customer_company?`<div class="co">${t.customer_company}</div>`:''}
     <div class="route">${t.pickup_location}${t.dropoff_location?`<span class="arrow">→</span>${t.dropoff_location}`:''}</div>
-    <div class="when">${fmtDate(t.pickup_date)} · ${fmtTime(t.pickup_time)}${t.passengers?` · ${t.passengers} pax`:''}</div>
+    <div class="when">${fmtDate(t.pickup_date)} · ${fmtTime(t.pickup_time)}</div>
+    ${t.notes?`<div class="when" style="font-style:italic;">${t.notes}</div>`:''}
     <div class="assign-line ${assignedText?'':'empty'}">${assignedText || 'No driver/vehicle assigned yet'}</div>
     <div class="card-actions">${actions}</div>`;
   card.querySelectorAll('[data-act]').forEach(btn=>{
@@ -619,50 +620,61 @@ function openOverlay(html){ document.getElementById('modal-body').innerHTML = ht
 function closeOverlay(){ document.getElementById('overlay').classList.remove('show'); }
 document.getElementById('overlay').addEventListener('click',(e)=>{ if(e.target.id==='overlay') closeOverlay(); });
 
+function locationSelect(name, required){
+  const opts = LOCATIONS.map(l=>`<option value="${l}">${l}</option>`).join('');
+  return `<select name="${name}" ${required?'required':''} onchange="this.nextElementSibling.style.display = this.value==='Others' ? 'block' : 'none'; this.nextElementSibling.required = this.value==='Others';">
+      <option value="">Select…</option>${opts}<option value="Others">Others</option>
+    </select>
+    <input type="text" name="${name}_other" placeholder="Enter location" style="display:none;margin-top:6px;">`;
+}
+function vehicleSelect(){
+  const opts = Object.entries(VEHICLE_LABELS).filter(([k])=>k!=='other').map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  return `<select name="requested_vehicle" required onchange="this.nextElementSibling.style.display = this.value==='other' ? 'block' : 'none'; this.nextElementSibling.required = this.value==='other';">
+      <option value="">Select…</option>${opts}<option value="other">Others</option>
+    </select>
+    <input type="text" name="requested_vehicle_other" placeholder="Describe vehicle needed" style="display:none;margin-top:6px;">`;
+}
 function openNewTripModal(){
-  const datalist = LOCATIONS.map(l=>`<option value="${l}">`).join('');
   openOverlay(`
-    <h3>New trip request</h3>
+    <h3>Make a reservation</h3>
     <form id="trip-form">
-      <div class="field"><label>Service type</label>
-        <select name="service_type">${Object.entries(SERVICE_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Customer name</label><input name="customer_name" required></div>
-        <div class="field"><label>Company (optional)</label><input name="customer_company"></div>
-      </div>
-      <div class="field"><label>Customer phone</label><input name="customer_phone"></div>
-      <div class="field-row">
-        <div class="field"><label>Pickup location</label><input name="pickup_location" list="loc-list" required placeholder="e.g. CJIA Airport"></div>
-        <div class="field"><label>Drop-off location</label><input name="dropoff_location" list="loc-list" placeholder="e.g. Georgetown"></div>
-      </div>
-      <datalist id="loc-list">${datalist}</datalist>
+      <div class="field"><label>Name</label><input name="customer_name" required></div>
+      <div class="field"><label>Email</label><input type="email" name="customer_email"></div>
+      <div class="field"><label>Contact number</label><input name="customer_phone"></div>
+      <div class="field"><label>Organization/Company (optional)</label><input name="customer_company"></div>
+      <div class="field"><label>Pickup location</label>${locationSelect('pickup_location', true)}</div>
+      <div class="field"><label>Dropoff location</label>${locationSelect('dropoff_location', true)}</div>
       <div class="field-row">
         <div class="field"><label>Pickup date</label><input type="date" name="pickup_date" required></div>
         <div class="field"><label>Pickup time</label><input type="time" name="pickup_time" required></div>
       </div>
-      <div class="field-row">
-        <div class="field"><label>Passengers / cargo qty</label><input type="number" name="passengers" min="1"></div>
-        <div class="field"><label>Preferred vehicle</label>
-          <select name="preferred_vehicle"><option value="">Any</option>${Object.entries(VEHICLE_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
-        </div>
-      </div>
-      <div class="field"><label>Notes</label><textarea name="notes" rows="2"></textarea></div>
+      <div class="field"><label>Vehicle of choice</label>${vehicleSelect()}</div>
+      <div class="field"><label>Message / additional information</label><textarea name="notes" rows="2" placeholder="e.g. number of passengers, luggage, special requests"></textarea></div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancel-modal">Cancel</button>
-        <button type="submit" class="btn btn-primary">Create trip request</button>
+        <button type="submit" class="btn btn-primary">Send</button>
       </div>
     </form>`);
   document.getElementById('cancel-modal').onclick = closeOverlay;
   document.getElementById('trip-form').onsubmit = async (e)=>{
     e.preventDefault();
     const fd = new FormData(e.target);
-    const body = Object.fromEntries(fd.entries());
-    delete body.preferred_vehicle;
-    if(body.passengers) body.passengers = parseInt(body.passengers,10); else delete body.passengers;
-    ['customer_company','dropoff_location','notes','customer_phone'].forEach(k=>{ if(!body[k]) delete body[k]; });
+    const raw = Object.fromEntries(fd.entries());
+    const body = {
+      customer_name: raw.customer_name,
+      customer_email: raw.customer_email || undefined,
+      customer_phone: raw.customer_phone || undefined,
+      customer_company: raw.customer_company || undefined,
+      pickup_location: raw.pickup_location === 'Others' ? raw.pickup_location_other : raw.pickup_location,
+      dropoff_location: raw.dropoff_location === 'Others' ? raw.dropoff_location_other : raw.dropoff_location,
+      pickup_date: raw.pickup_date,
+      pickup_time: raw.pickup_time,
+      requested_vehicle: raw.requested_vehicle === 'other' ? raw.requested_vehicle_other : VEHICLE_LABELS[raw.requested_vehicle],
+      notes: raw.notes || undefined,
+    };
+    Object.keys(body).forEach(k=>{ if(body[k]===undefined || body[k]==='') delete body[k]; });
     await sb('trips', {method:'POST', body:JSON.stringify(body)});
-    closeOverlay(); toast('Trip request created'); loadAll();
+    closeOverlay(); toast('Reservation created'); loadAll();
   };
 }
 
@@ -671,7 +683,7 @@ function openAssignModal(trip){
   const availVehicles = state.vehicles.filter(v=>v.status==='available');
   openOverlay(`
     <h3>Assign trip</h3>
-    <p style="font-size:13px;color:var(--ink-soft);margin:2px 0 16px;">${t_esc(trip.customer_name)} · ${SERVICE_LABELS[trip.service_type]} · ${fmtDate(trip.pickup_date)} · ${fmtTime(trip.pickup_time)}</p>
+    <p style="font-size:13px;color:var(--ink-soft);margin:2px 0 16px;">${t_esc(trip.customer_name)} · ${trip.requested_vehicle ? 'wants '+t_esc(trip.requested_vehicle) : 'no vehicle preference'} · ${fmtDate(trip.pickup_date)} · ${fmtTime(trip.pickup_time)}</p>
     <form id="assign-form">
       <div class="field"><label>Driver</label>
         <select name="driver_id" required>
@@ -733,9 +745,9 @@ function renderDriver(){
       : `<button class="btn btn-primary btn-sm" data-act="complete" data-id="${t.id}">Complete trip</button>`;
     row.innerHTML = `
       <div class="left">
-        <div class="svc">${SERVICE_LABELS[t.service_type]||t.service_type} <span class="badge ${t.status==='in_progress'?'b-in_progress':'b-assigned'}">${t.status==='in_progress'?'In progress':'Assigned'}</span></div>
+        <div class="svc">${t.vehicles?.plate_number || 'No vehicle'} <span class="badge ${t.status==='in_progress'?'b-in_progress':'b-assigned'}">${t.status==='in_progress'?'In progress':'Assigned'}</span></div>
         <div class="route">${t.pickup_location}${t.dropoff_location?` → ${t.dropoff_location}`:''}</div>
-        <div class="meta">${fmtDate(t.pickup_date)} · ${fmtTime(t.pickup_time)} · ${t.customer_name}${t.passengers?` · ${t.passengers} pax`:''} · ${t.vehicles?.plate_number||''}</div>
+        <div class="meta">${fmtDate(t.pickup_date)} · ${fmtTime(t.pickup_time)} · ${t.customer_name}${t.notes?` · ${t.notes}`:''}</div>
       </div>
       <div>${nextAction}</div>`;
     list.appendChild(row);
