@@ -223,6 +223,25 @@
   .placeholder-wrap h2{font-family:var(--head);font-size:22px;color:var(--navy);text-transform:uppercase;letter-spacing:.3px;margin:0 0 10px;}
   .placeholder-wrap p{font-size:14px;color:var(--ink-soft);max-width:420px;line-height:1.6;margin:0 0 22px;}
 
+  /* ============ FUEL REQUISITIONS ============ */
+  .project-toggle{display:flex;gap:2px;background:var(--slate-bg);padding:3px;border-radius:9px;width:fit-content;margin-bottom:18px;}
+  .project-toggle button{border:none;background:transparent;color:var(--ink-soft);padding:8px 18px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);}
+  .project-toggle button.active{background:var(--navy);color:#fff;}
+  .fuel-list{display:flex;flex-direction:column;gap:10px;}
+  .fuel-card{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--green);border-radius:9px;padding:13px 15px;cursor:pointer;transition:box-shadow .12s ease,border-color .12s ease;}
+  .fuel-card:hover{box-shadow:0 4px 14px rgba(21,31,56,.08);border-color:var(--navy-3);}
+  .fuel-card.awaiting{border-left-color:#C99A2E;}
+  .fuel-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+  .fuel-top .veh{font-weight:700;font-size:14px;color:var(--ink);}
+  .fuel-id{font-family:var(--mono);font-size:11px;color:var(--ink-soft);}
+  .fuel-meta{font-size:12.5px;color:var(--ink-soft);margin-top:4px;display:flex;gap:14px;flex-wrap:wrap;}
+  .fuel-meta b{color:var(--ink);font-weight:600;}
+  .status-badge{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap;}
+  .status-recorded{background:var(--green-bg);color:var(--green);}
+  .status-awaiting{background:#F5EBD2;color:#8A6412;}
+  .status-noscan{background:var(--slate-bg);color:var(--ink-soft);}
+  .receipt-thumb{width:100%;max-width:220px;border-radius:8px;border:1px solid var(--line);margin-top:8px;display:block;}
+
   /* ============ MODAL ============ */
   .overlay{position:fixed;inset:0;background:rgba(21,31,56,.55);display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;z-index:50;}
   .overlay.show{display:flex;}
@@ -330,6 +349,7 @@
     <div id="screen-hub"></div>
     <div id="screen-dispatch" class="hidden"></div>
     <div id="screen-driver" class="hidden"></div>
+    <div id="screen-fuel" class="hidden"></div>
     <div id="screen-placeholder" class="hidden"></div>
   </main>
 </div>
@@ -363,7 +383,11 @@ const PAYMENT_STATUSES = ["Paid in full","Part payment","Invoiced","Payment pend
 const TRANSPORT_TYPES = ["SUV","Minibus","Coaster Bus","Bus","Van","Other"];
 const LOCATIONS = ["Cheddi Jagan International Airport","Ogle Airport","Georgetown","Mahaica","Mahaicony","Rosignol","New Amsterdam","Canje","Rosehall","Corriverton","Moleson Creek","West Bank Demerara","Wales","Leonora","Parika"];
 const DEFAULT_EMERGENCY_CONTACT = "Call:+592 231 6873 / WhatsApp & Calls +592 624 1147";
+const PROJECTS = ["KRBS","SBM"];
+const FUEL_VEHICLE_TYPES = ["Car","Bus","C.Bus","Truck","SUV","Other"];
+const FUEL_TYPES = ["Diesel","Gas"];
 function payClass(status){ return 'pay-' + String(status).replace(/ /g,'_'); }
+function amountIsRecorded(v){ return v!=null && v!=='' && !isNaN(parseFloat(v)) && isFinite(v); }
 
 const ICONS = {
   dispatch:`<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="6" r="2.4" stroke="currentColor" stroke-width="1.8"/><circle cx="19" cy="18" r="2.4" stroke="currentColor" stroke-width="1.8"/><path d="M7 7 L17 17" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2.5 3" stroke-linecap="round"/><path d="M12 4 L14 4 L14 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
@@ -374,7 +398,7 @@ const ICONS = {
   mytrips:`<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="4" y="3.5" width="16" height="17" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7.5 9 L9 10.5 L12 7.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 9 H17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M7.5 15 L9 16.5 L12 13.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 15 H17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
 };
 
-let state = { user:null, screen:'hub', bookings:[], drivers:[], vehicles:[], staff:[], loading:true };
+let state = { user:null, screen:'hub', bookings:[], drivers:[], vehicles:[], staff:[], fuelRequests:[], loading:true };
 
 function toast(msg){
   const el = document.getElementById('toast');
@@ -427,19 +451,20 @@ document.getElementById('brand-home').onclick = goHub;
 async function loadAll(){
   state.loading = true;
   renderCurrentScreen();
-  const [bookings, drivers, vehicles] = await Promise.all([
+  const [bookings, drivers, vehicles, fuelRequests] = await Promise.all([
     sb('bookings?select=*,drivers:assigned_driver_id(id,full_name),vehicles:assigned_vehicle_id(id,plate_number,make_model)&order=booking_date.asc,pickup_time.asc'),
     sb('drivers?select=*&order=full_name.asc'),
     sb('vehicles?select=*&order=plate_number.asc'),
+    sb('fuel_requisitions?select=*&order=req_date.desc,created_at.desc'),
   ]);
-  state.bookings = bookings; state.drivers = drivers; state.vehicles = vehicles;
+  state.bookings = bookings; state.drivers = drivers; state.vehicles = vehicles; state.fuelRequests = fuelRequests;
   state.loading = false;
   renderCurrentScreen();
 }
 
 /* ============ ROUTING ============ */
 function showScreen(key){
-  ['hub','dispatch','driver','placeholder'].forEach(k=>{
+  ['hub','dispatch','driver','fuel','placeholder'].forEach(k=>{
     document.getElementById('screen-'+k).classList.toggle('hidden', k!==key);
   });
   document.getElementById('back-slot').innerHTML = key==='hub' ? '' :
@@ -447,18 +472,20 @@ function showScreen(key){
   const back = document.getElementById('back-to-hub');
   if(back) back.onclick = goHub;
   document.getElementById('topbar-subtitle').textContent =
-    key==='hub' ? 'DASHBOARD' : key==='dispatch' ? 'BOOKING BOARD' : key==='driver' ? 'MY TRIPS' : 'MODULE';
+    key==='hub' ? 'DASHBOARD' : key==='dispatch' ? 'BOOKING BOARD' : key==='driver' ? 'MY TRIPS' : key==='fuel' ? 'FUEL REQUISITIONS' : 'MODULE';
   window.scrollTo(0,0);
 }
 function goHub(){ state.screen='hub'; showScreen('hub'); renderCurrentScreen(); }
 function goBoard(){ state.screen='dispatch'; showScreen('dispatch'); renderCurrentScreen(); }
 function goDriver(){ state.screen='driver'; showScreen('driver'); renderCurrentScreen(); }
+function goFuel(){ state.screen='fuel'; showScreen('fuel'); renderCurrentScreen(); }
 function goPlaceholder(mod){ state.screen='placeholder'; state.placeholderMod = mod; showScreen('placeholder'); renderCurrentScreen(); }
 
 function renderCurrentScreen(){
   if(state.screen==='hub') renderHub();
   else if(state.screen==='dispatch') renderBoard();
   else if(state.screen==='driver') renderDriver();
+  else if(state.screen==='fuel') renderFuel();
   else if(state.screen==='placeholder') renderPlaceholder();
 }
 
@@ -466,7 +493,6 @@ function renderCurrentScreen(){
 const PLACEHOLDER_MODULES = {
   fleet:{ icon:'fleet', title:'Fleet & Vehicles', desc:'Vehicle registry, registration & licensing dates, servicing schedules.' },
   hr:{ icon:'hr', title:'Drivers & HR', desc:'Staff records, licenses, certifications, attendance and scheduling.' },
-  fuel:{ icon:'fuel', title:'Fuel Requisitions', desc:'Fuel requests, approvals and consumption tracking per vehicle.' },
   reports:{ icon:'reports', title:'Reports & Analytics', desc:'Trip volume, on-time performance and fleet utilization.' },
 };
 
@@ -476,11 +502,14 @@ function renderHub(){
   const isAdmin = state.user.role === 'admin';
   const unassignedCt = state.bookings.filter(b=>b.active && !b.assigned_driver_id).length;
   const myCt = state.bookings.filter(b=> b.assigned_driver_id===state.user.driver_id && b.active).length;
+  const pendingFuelCt = state.fuelRequests.filter(f=>!amountIsRecorded(f.guyoil_amount)).length;
 
   let cards = '';
   if(isAdmin){
     cards += moduleCard('dispatch', 'dispatch', 'Booking Board', 'Confirmed booking desk — create, edit and dispatch reservations.',
       unassignedCt>0 ? `<span class="module-stat">${unassignedCt} unassigned</span>` : `<span class="module-stat ok">All bookings assigned</span>`, false, goBoard);
+    cards += moduleCard('fuel', 'fuel', 'Fuel Requisitions', 'Request fuel per vehicle, approve requests, track consumption.',
+      pendingFuelCt>0 ? `<span class="module-stat">${pendingFuelCt} awaiting approval</span>` : `<span class="module-stat ok">Nothing pending</span>`, false, goFuel);
     Object.entries(PLACEHOLDER_MODULES).forEach(([key,m])=>{
       cards += moduleCard(key, m.icon, m.title, m.desc, '', true, ()=>goPlaceholder(key));
     });
@@ -881,6 +910,198 @@ function renderDriver(){
       </div>`;
     list.appendChild(row);
   });
+}
+
+/* ============ FUEL REQUISITIONS ============ */
+state.fuelProject = 'KRBS';
+
+function renderFuel(){
+  const el = document.getElementById('screen-fuel');
+  if(state.loading){ el.innerHTML = '<div class="loading">Loading fuel requisitions…</div>'; return; }
+
+  const projFiltered = state.fuelRequests.filter(f=>f.project===state.fuelProject);
+  const awaitingCt = projFiltered.filter(f=>!amountIsRecorded(f.guyoil_amount)).length;
+  const noScanCt = projFiltered.filter(f=>!f.receipt_file_url).length;
+  const thisMonth = new Date().toISOString().slice(0,7);
+  const monthTotal = projFiltered.filter(f=> f.req_date && f.req_date.startsWith(thisMonth) && amountIsRecorded(f.guyoil_amount))
+    .reduce((sum,f)=> sum + parseFloat(f.guyoil_amount), 0);
+
+  el.innerHTML = `
+    <div class="project-toggle" id="project-toggle">
+      ${PROJECTS.map(p=>`<button data-proj="${p}" class="${p===state.fuelProject?'active':''}">${p}</button>`).join('')}
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="n">${projFiltered.length}</div><div class="l">${state.fuelProject} requisitions</div></div>
+      <div class="stat ${awaitingCt>0?'alert':''}"><div class="n">${awaitingCt}</div><div class="l">Awaiting amount</div></div>
+      <div class="stat ${noScanCt>0?'alert':''}"><div class="n">${noScanCt}</div><div class="l">No receipt scanned</div></div>
+      <div class="stat"><div class="n">$${monthTotal.toLocaleString()}</div><div class="l">Recorded this month (GYD)</div></div>
+    </div>
+    <div class="section-head"><h2>${state.fuelProject} fuel log</h2><button class="btn btn-primary" id="btn-new-fuel">+ New requisition</button></div>
+    <div class="fuel-list" id="fuel-list"></div>
+  `;
+
+  document.getElementById('project-toggle').querySelectorAll('button').forEach(btn=>{
+    btn.onclick = ()=>{ state.fuelProject = btn.dataset.proj; renderFuel(); };
+  });
+  document.getElementById('btn-new-fuel').onclick = ()=>openFuelModal(null);
+
+  const list = document.getElementById('fuel-list');
+  if(projFiltered.length===0){
+    list.innerHTML = `<div class="empty-state">No ${state.fuelProject} requisitions yet.</div>`;
+    return;
+  }
+  projFiltered.forEach(f=>{
+    const recorded = amountIsRecorded(f.guyoil_amount);
+    const card = document.createElement('div');
+    card.className = 'fuel-card' + (recorded ? '' : ' awaiting');
+    card.innerHTML = `
+      <div class="fuel-top">
+        <div><span class="veh">${f.vehicle_reg}</span> <span class="fuel-id">Req. #${f.req_number}</span></div>
+        <div style="display:flex;gap:6px;">
+          <span class="status-badge ${recorded?'status-recorded':'status-awaiting'}">${recorded? '$'+parseFloat(f.guyoil_amount).toLocaleString()+' GYD' : (f.guyoil_amount || 'Awaiting amount')}</span>
+          <span class="status-badge status-noscan">${f.receipt_file_url? 'Scanned' : 'Not scanned'}</span>
+        </div>
+      </div>
+      <div class="fuel-meta">
+        <span><b>${fmtDate(f.req_date)}</b></span>
+        ${f.driver?`<span>Issued to ${f.driver}</span>`:''}
+        ${f.requested_by?`<span>Req by ${f.requested_by}</span>`:''}
+        ${f.fuel_type?`<span>${f.fuel_type}</span>`:''}
+      </div>`;
+    card.onclick = ()=>openFuelModal(f);
+    list.appendChild(card);
+  });
+}
+
+async function uploadReceipt(file, vehicleReg, reqNumber){
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+  const filename = `${vehicleReg}-${reqNumber}`.replace(/[^a-zA-Z0-9-]/g,'_') + '.' + ext;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/fuel-receipts/${filename}`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': file.type, 'x-upsert': 'true' },
+    body: file,
+  });
+  if(!res.ok){ throw new Error(await res.text()); }
+  return { url: `${SUPABASE_URL}/storage/v1/object/public/fuel-receipts/${filename}`, filename };
+}
+
+function openFuelModal(f){
+  const isEdit = !!f;
+  const d = f || {
+    project: state.fuelProject, req_number:'', req_date: new Date().toISOString().slice(0,10),
+    vehicle_reg:'', vehicle_type:'', fuel_type:'', requested_by:'', approved_by:'',
+    issued_date:'', driver:'', guyoil_amount:'', mileage:'', liters_received:'',
+    fuel_receipt_received_by:'', notes:'',
+  };
+  openOverlay(`
+    <h3>${isEdit? 'Requisition '+d.req_number : 'New fuel requisition'}</h3>
+    ${isEdit && d.updated_by ? `<p style="font-size:12px;color:var(--ink-soft);margin:2px 0 4px;">Last updated by ${t_esc(d.updated_by)}</p>` : ''}
+    <form id="fuel-form">
+      <div class="form-section">
+        <h4>Voucher</h4>
+        <div class="field-row">
+          <div class="field"><label>Project *</label>
+            <select name="project" required>${PROJECTS.map(p=>`<option value="${p}" ${d.project===p?'selected':''}>${p}</option>`).join('')}</select>
+          </div>
+          <div class="field"><label>Req. # *</label><input name="req_number" required placeholder="from the voucher pad" value="${t_esc(d.req_number)}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Date *</label><input type="date" name="req_date" required value="${d.req_date}"></div>
+          <div class="field"><label>Vehicle reg. *</label><input name="vehicle_reg" required value="${t_esc(d.vehicle_reg)}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Type</label>
+            <select name="vehicle_type"><option value="">—</option>${FUEL_VEHICLE_TYPES.map(t=>`<option value="${t}" ${d.vehicle_type===t?'selected':''}>${t}</option>`).join('')}</select>
+          </div>
+          <div class="field"><label>Fuel</label>
+            <select name="fuel_type"><option value="">—</option>${FUEL_TYPES.map(t=>`<option value="${t}" ${d.fuel_type===t?'selected':''}>${t}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Requested by</label><input name="requested_by" value="${t_esc(d.requested_by||'')}"></div>
+          <div class="field"><label>Approved by</label><input name="approved_by" value="${t_esc(d.approved_by||'')}"></div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h4>Issued to driver</h4>
+        <div class="field-row">
+          <div class="field"><label>Issued date</label><input type="date" name="issued_date" value="${d.issued_date||''}"></div>
+          <div class="field"><label>Driver</label><input name="driver" value="${t_esc(d.driver||'')}"></div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h4>After fuel-up (fill in once the receipt comes back)</h4>
+        <div class="field-row">
+          <div class="field"><label>Amount (GYD)</label><input name="guyoil_amount" placeholder="e.g. 9185, or 'to be issued'" value="${t_esc(d.guyoil_amount||'')}"></div>
+          <div class="field"><label>Fuel receipt received by</label><input name="fuel_receipt_received_by" value="${t_esc(d.fuel_receipt_received_by||'')}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Mileage</label><input type="number" name="mileage" value="${d.mileage||''}"></div>
+          <div class="field"><label>Liters received</label><input type="number" name="liters_received" value="${d.liters_received||''}"></div>
+        </div>
+        <div class="field">
+          <label>Scan receipt</label>
+          <input type="file" name="receipt_file" accept="image/*,application/pdf" capture="environment">
+          ${d.receipt_file_url ? `<img src="${d.receipt_file_url}" class="receipt-thumb" alt="Scanned receipt">` : ''}
+        </div>
+      </div>
+
+      <div class="field"><label>Notes</label><textarea name="notes" rows="2">${t_esc(d.notes||'')}</textarea></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancel-modal">Close</button>
+        <button type="submit" class="btn btn-primary">Save requisition</button>
+      </div>
+    </form>
+  `, true);
+
+  document.getElementById('cancel-modal').onclick = closeOverlay;
+  document.getElementById('fuel-form').onsubmit = async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const raw = Object.fromEntries(fd.entries());
+    const file = fd.get('receipt_file');
+
+    const body = {
+      project: raw.project,
+      req_number: raw.req_number,
+      req_date: raw.req_date,
+      vehicle_reg: raw.vehicle_reg,
+      vehicle_type: raw.vehicle_type || null,
+      fuel_type: raw.fuel_type || null,
+      requested_by: raw.requested_by || null,
+      approved_by: raw.approved_by || null,
+      issued_date: raw.issued_date || null,
+      driver: raw.driver || null,
+      guyoil_amount: raw.guyoil_amount || null,
+      mileage: raw.mileage ? parseFloat(raw.mileage) : null,
+      liters_received: raw.liters_received ? parseFloat(raw.liters_received) : null,
+      fuel_receipt_received_by: raw.fuel_receipt_received_by || null,
+      notes: raw.notes || null,
+      updated_by: state.user.full_name,
+      updated_at: new Date().toISOString(),
+    };
+
+    try{
+      if(file && file.size > 0){
+        const uploaded = await uploadReceipt(file, raw.vehicle_reg, raw.req_number);
+        body.receipt_file_url = uploaded.url;
+        body.receipt_filename = uploaded.filename;
+      }
+      if(isEdit){
+        await sb(`fuel_requisitions?id=eq.${f.id}`, {method:'PATCH', body:JSON.stringify(body)});
+        toast('Requisition updated');
+      } else {
+        await sb('fuel_requisitions', {method:'POST', body:JSON.stringify(body)});
+        toast('Requisition saved');
+      }
+      closeOverlay(); loadAll();
+    }catch(err){
+      alert('Could not save — check the Req. # isn\'t already used for this project.\n\n' + err.message);
+    }
+  };
 }
 </script>
 </body>
