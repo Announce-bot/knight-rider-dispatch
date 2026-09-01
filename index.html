@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Knight Rider — Operations</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  :root{
+    --navy:#151F38;
+    --navy-2:#22335C;
+    --navy-3:#2E4478;
+    --red:#D22B2B;
+    --red-dark:#A31E1E;
+    --ink:#171B24;
+    --ink-soft:#5C6474;
+    --bg:#F4F4F1;
+    --panel:#FFFFFF;
+    --line:#E3E3DF;
+    --green:#2E7D4F;
+    --green-bg:#E3F1E8;
+    --navy-bg:#E7EAF3;
+    --red-bg:#FBE7E7;
+    --slate-bg:#EDEEEA;
+    --mono:'IBM Plex Mono', Menlo, Consolas, monospace;
+    --sans:'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --head:'Oswald', 'Inter', sans-serif;
+    --r:10px;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--ink);}
+  button,input,select,textarea{font-family:inherit;}
+  .hidden{display:none !important;}
+
+  /* ============ LOGIN SCREEN ============ */
+  #screen-login{
+    min-height:100vh;display:flex;
+  }
+  .login-brand{
+    flex:1.1;position:relative;overflow:hidden;
+    background:linear-gradient(150deg,var(--navy) 0%,var(--navy-2) 55%,var(--navy-3) 100%);
+    color:#fff;display:flex;flex-direction:column;justify-content:space-between;
+    padding:48px;
+  }
+  .login-brand .swoosh{position:absolute;inset:0;z-index:0;opacity:.9;}
+  .login-brand .swoosh svg{position:absolute;bottom:-8%;left:-6%;width:120%;height:60%;}
+  .login-brand-top{position:relative;z-index:1;display:flex;align-items:center;gap:14px;}
+  .login-brand-top img{height:56px;width:56px;object-fit:contain;filter:drop-shadow(0 3px 6px rgba(0,0,0,.35));}
+  .login-brand-top b{font-family:var(--head);font-size:22px;text-transform:uppercase;letter-spacing:.4px;display:block;}
+  .login-brand-top span{font-size:11.5px;color:#AEB9D2;font-family:var(--mono);letter-spacing:.5px;}
+  .login-brand-mid{position:relative;z-index:1;max-width:420px;}
+  .login-brand-mid h1{font-family:var(--head);font-size:34px;line-height:1.2;font-weight:600;margin:0 0 14px;}
+  .login-brand-mid p{font-size:14.5px;color:#C7D0E4;line-height:1.6;margin:0;}
+  .login-brand-bottom{position:relative;z-index:1;display:flex;gap:28px;font-family:var(--mono);font-size:12px;color:#AEB9D2;}
+  .login-brand-bottom b{display:block;font-family:var(--head);font-size:20px;color:#fff;font-weight:600;}
+
+  .login-form-wrap{
+    flex:1;display:flex;align-items:center;justify-content:center;padding:40px 24px;background:var(--bg);
+  }
+  .login-form{width:100%;max-width:360px;}
+  .login-form h2{font-family:var(--head);font-size:22px;margin:0 0 6px;color:var(--navy);text-transform:uppercase;letter-spacing:.3px;}
+  .login-form>p{font-size:13.5px;color:var(--ink-soft);margin:0 0 26px;}
+  .field{margin-bottom:15px;}
+  .field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:6px;font-weight:500;}
+  .field input,.field select,.field textarea{
+    width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:#fff;
+  }
+  .field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--navy-3);outline-offset:1px;}
+  .login-form .btn-primary{width:100%;padding:12px;font-size:14.5px;margin-top:6px;}
+  .login-error{background:var(--red-bg);color:var(--red-dark);font-size:12.5px;padding:10px 12px;border-radius:7px;margin-bottom:14px;display:none;}
+  .login-error.show{display:block;}
+  .demo-hint{margin-top:22px;padding:13px 14px;background:var(--navy-bg);border-radius:8px;font-size:12px;color:var(--navy-2);line-height:1.7;}
+  .demo-hint b{font-family:var(--mono);}
+  @media(max-width:860px){ #screen-login{flex-direction:column;} .login-brand{padding:32px;} }
+
+  /* ============ APP SHELL (post-login) ============ */
+  #app-shell{min-height:100vh;display:none;flex-direction:column;}
+  header.topbar{position:relative;background:linear-gradient(135deg,var(--navy) 0%,var(--navy-2) 62%,var(--navy-3) 100%);color:#fff;overflow:hidden;}
+  .topbar-inner{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:14px 26px;flex-wrap:wrap;gap:14px;}
+  .swoosh{position:absolute;inset:0;z-index:1;pointer-events:none;opacity:.9;}
+  .swoosh svg{position:absolute;top:0;right:-4%;height:100%;width:60%;}
+  .stripe-bottom{height:4px;background:linear-gradient(90deg,var(--red) 0%,var(--red) 55%,transparent 100%);}
+  .brand{display:flex;align-items:center;gap:12px;cursor:pointer;}
+  .brand img{height:40px;width:40px;object-fit:contain;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35));}
+  .brand-text{display:flex;flex-direction:column;line-height:1.15;}
+  .brand-text b{font-family:var(--head);font-weight:600;font-size:17px;letter-spacing:.3px;text-transform:uppercase;}
+  .brand-text span{font-size:10.5px;color:#B9C3DC;font-family:var(--mono);letter-spacing:.4px;}
+  .topbar-right{display:flex;align-items:center;gap:16px;}
+  .user-chip{display:flex;align-items:center;gap:9px;}
+  .user-avatar{width:32px;height:32px;border-radius:50%;background:var(--red);color:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:13px;font-weight:600;}
+  .user-meta{display:flex;flex-direction:column;line-height:1.2;}
+  .user-meta b{font-size:12.5px;}
+  .user-meta span{font-size:10.5px;color:#AEB9D2;text-transform:capitalize;}
+  .logout-btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#E7EAF3;padding:7px 13px;border-radius:7px;font-size:12.5px;cursor:pointer;font-weight:500;}
+  .logout-btn:hover{background:rgba(255,255,255,.15);}
+  .back-btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#E7EAF3;padding:7px 13px;border-radius:7px;font-size:12.5px;cursor:pointer;font-weight:500;display:flex;align-items:center;gap:6px;}
+  .back-btn:hover{background:rgba(255,255,255,.15);}
+
+  main{flex:1;padding:26px 26px 70px;max-width:1260px;width:100%;margin:0 auto;}
+
+  /* ============ HUB ============ */
+  .hub-head{margin-bottom:26px;}
+  .hub-head h1{font-family:var(--head);font-size:24px;margin:0 0 6px;color:var(--navy);text-transform:uppercase;letter-spacing:.3px;}
+  .hub-head p{font-size:14px;color:var(--ink-soft);margin:0;}
+  .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
+  .module-card{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;cursor:pointer;
+    transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;position:relative;overflow:hidden;
+  }
+  .module-card:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(21,31,56,.12);border-color:var(--navy-3);}
+  .module-card.disabled{cursor:default;opacity:.72;}
+  .module-card.disabled:hover{transform:none;box-shadow:none;border-color:var(--line);}
+  .module-icon{width:46px;height:46px;border-radius:11px;background:var(--navy-bg);display:flex;align-items:center;justify-content:center;margin-bottom:16px;color:var(--navy);}
+  .module-card.disabled .module-icon{background:var(--slate-bg);color:var(--ink-soft);}
+  .module-card h3{font-family:var(--head);font-size:16.5px;margin:0 0 6px;color:var(--navy);text-transform:uppercase;letter-spacing:.2px;}
+  .module-card p{font-size:12.8px;color:var(--ink-soft);line-height:1.5;margin:0 0 14px;min-height:36px;}
+  .module-stat{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--red);}
+  .module-stat.ok{color:var(--green);}
+  .soon-tag{position:absolute;top:16px;right:16px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;background:var(--slate-bg);color:var(--ink-soft);padding:4px 9px;border-radius:20px;}
+
+  /* ============ STAT STRIP ============ */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:26px;}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:15px 17px;border-left:3px solid var(--navy-3);}
+  .stat .n{font-family:var(--head);font-size:28px;font-weight:600;color:var(--navy);}
+  .stat .l{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .stat.alert{border-left-color:var(--red);}
+  .stat.alert .n{color:var(--red);}
+
+  .section-head{display:flex;align-items:center;justify-content:space-between;margin:30px 0 13px;}
+  .section-head h2{font-family:var(--head);font-size:18px;margin:0;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--navy);}
+  .btn{border:none;border-radius:8px;padding:10px 18px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:transform .1s ease, background .15s ease;}
+  .btn-primary{background:var(--red);color:#fff;}
+  .btn-primary:hover{background:var(--red-dark);}
+  .btn-ghost{background:transparent;color:var(--navy);border:1px solid var(--line);}
+  .btn-ghost:hover{border-color:var(--navy-3);background:var(--navy-bg);}
+  .btn-sm{padding:7px 12px;font-size:12.5px;border-radius:6px;}
+  .btn:active{transform:scale(.97);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+
+  /* ============ DISPATCH BOARD ============ */
+  .board{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  @media(max-width:980px){.board{grid-template-columns:1fr;}}
+  .col{background:var(--slate-bg);border-radius:var(--r);padding:12px;min-height:130px;}
+  .col-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding:0 3px;}
+  .col-head b{font-family:var(--head);font-size:12.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft);font-weight:600;}
+  .col-head .count{font-family:var(--mono);font-size:12px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);padding:1px 7px;border-radius:20px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--navy-3);border-radius:9px;padding:13px;margin-bottom:10px;}
+  .card.st-pending{border-left-color:var(--ink-soft);}
+  .card.st-assigned{border-left-color:var(--navy-3);}
+  .card.st-in_progress{border-left-color:var(--red);}
+  .card.st-completed{border-left-color:var(--green);}
+  .card .svc{font-family:var(--mono);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--red);margin-bottom:6px;}
+  .card .cust{font-weight:700;font-size:14.5px;margin-bottom:2px;color:var(--ink);}
+  .card .co{font-size:12px;color:var(--ink-soft);margin-bottom:9px;}
+  .card .route{font-size:12.5px;color:var(--ink);margin-bottom:3px;line-height:1.4;}
+  .card .route .arrow{color:var(--ink-soft);margin:0 4px;}
+  .card .when{font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin-bottom:10px;}
+  .card .assign-line{font-size:12.5px;padding:8px 10px;background:var(--navy-bg);border-radius:6px;margin-bottom:10px;color:var(--navy);font-weight:500;}
+  .card .assign-line.empty{color:var(--ink-soft);font-style:italic;background:var(--slate-bg);font-weight:400;}
+  .card-actions{display:flex;gap:6px;flex-wrap:wrap;}
+  .empty-col{color:var(--ink-soft);font-size:12.5px;padding:22px 8px;text-align:center;}
+
+  /* ============ ROSTERS ============ */
+  .rosters{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px;}
+  @media(max-width:780px){.rosters{grid-template-columns:1fr;}}
+  .roster{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;}
+  .roster h3{font-family:var(--head);font-size:14px;margin:0 0 10px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--navy);}
+  .roster-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line);}
+  .roster-row:first-of-type{border-top:none;}
+  .roster-row .name{font-size:13.5px;font-weight:600;}
+  .roster-row .sub{font-size:11.5px;color:var(--ink-soft);font-family:var(--mono);}
+  select.status-pick{font-family:var(--sans);font-size:12px;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;}
+
+  .badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;}
+  .b-available{background:var(--green-bg);color:var(--green);}
+  .b-on_trip,.b-assigned{background:var(--navy-bg);color:var(--navy-2);}
+  .b-off_duty,.b-maintenance{background:#EDEDED;color:var(--ink-soft);}
+  .b-in_progress{background:var(--red-bg);color:var(--red-dark);}
+
+  /* ============ DRIVER MODULE ============ */
+  .driver-summary{background:linear-gradient(120deg,var(--navy) 0%,var(--navy-2) 100%);color:#fff;border-radius:var(--r);padding:20px 22px;margin-bottom:22px;display:flex;align-items:center;gap:24px;flex-wrap:wrap;}
+  .driver-summary .name{font-family:var(--head);font-size:19px;font-weight:600;}
+  .driver-summary .sub{font-size:12px;color:#B9C3DC;font-family:var(--mono);}
+  .driver-summary .pill{margin-left:auto;font-size:12.5px;color:#C7D0E4;}
+  .driver-summary .pill b{color:#fff;font-family:var(--head);font-size:18px;display:block;}
+  .trip-list{display:flex;flex-direction:column;gap:10px;}
+  .trip-row{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--navy-3);border-radius:var(--r);padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;}
+  .trip-row.in_progress{border-left-color:var(--red);}
+  .trip-row .left .svc{font-family:var(--mono);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--red);margin-bottom:6px;display:flex;align-items:center;gap:8px;}
+  .trip-row .left .route{font-weight:700;font-size:15px;margin-bottom:4px;}
+  .trip-row .left .meta{font-size:12.5px;color:var(--ink-soft);font-family:var(--mono);}
+  .empty-state{background:var(--panel);border:1px dashed var(--line);border-radius:var(--r);padding:40px;text-align:center;color:var(--ink-soft);font-size:13.5px;}
+
+  /* ============ PLACEHOLDER MODULE ============ */
+  .placeholder-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center;}
+  .placeholder-wrap .module-icon{width:64px;height:64px;margin-bottom:22px;}
+  .placeholder-wrap h2{font-family:var(--head);font-size:22px;color:var(--navy);text-transform:uppercase;letter-spacing:.3px;margin:0 0 10px;}
+  .placeholder-wrap p{font-size:14px;color:var(--ink-soft);max-width:420px;line-height:1.6;margin:0 0 22px;}
+
+  /* ============ MODAL ============ */
+  .overlay{position:fixed;inset:0;background:rgba(21,31,56,.55);display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;z-index:50;}
+  .overlay.show{display:flex;}
+  .modal{background:#fff;border-radius:14px;padding:26px;width:100%;max-width:480px;border-top:4px solid var(--red);animation:modalIn .18s ease;}
+  @keyframes modalIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+  .modal h3{margin:0 0 4px;font-family:var(--head);font-size:18px;text-transform:uppercase;letter-spacing:.3px;color:var(--navy);}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;z-index:60;display:none;box-shadow:0 8px 24px rgba(0,0,0,.25);}
+  .toast.show{display:block;}
+  .loading{color:var(--ink-soft);font-size:13px;padding:24px 2px;}
+  button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--red);outline-offset:2px;}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN SCREEN ============ -->
+<div id="screen-login">
+  <div class="login-brand">
+    <div class="swoosh">
+      <svg viewBox="0 0 500 300" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M-20,180 C120,120 300,220 520,140 L520,300 L-20,300 Z" fill="rgba(210,43,43,0.15)"/>
+        <path d="M-20,220 C140,260 320,190 520,240 L520,300 L-20,300 Z" fill="rgba(255,255,255,0.05)"/>
+      </svg>
+    </div>
+    <div class="login-brand-top">
+      <img src="/logo.png" alt="Knight Rider logo">
+      <div>
+        <b>Knight Rider</b>
+        <span>OPERATIONS PLATFORM</span>
+      </div>
+    </div>
+    <div class="login-brand-mid">
+      <h1>Moving people, personnel and cargo across Guyana.</h1>
+      <p>This is Knight Rider's internal operations system — trip dispatch, fleet, drivers and logistics, coordinated from one place. Sign in with your staff account to continue.</p>
+    </div>
+    <div class="login-brand-bottom">
+      <div><b>30+</b>Years running</div>
+      <div><b>24/7</b>Dispatch</div>
+      <div><b>10+</b>Service lines</div>
+    </div>
+  </div>
+  <div class="login-form-wrap">
+    <div class="login-form">
+      <h2>Staff sign in</h2>
+      <p>Enter your Knight Rider credentials to access the dashboard.</p>
+      <div class="login-error" id="login-error"></div>
+      <form id="login-form">
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="login-email" required placeholder="you@knightriderbus.com" autocomplete="username">
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="login-password" required placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary">Sign in</button>
+      </form>
+      <div class="demo-hint">
+        <b>Demo access —</b> admin@knightriderbus.com / devon@knightriderbus.com / kester@knightriderbus.com / anand@knightriderbus.com<br>
+        Password for all demo accounts: <b>demo1234</b>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ APP SHELL ============ -->
+<div id="app-shell">
+  <header class="topbar">
+    <div class="swoosh">
+      <svg viewBox="0 0 500 140" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0,60 C140,20 300,10 500,-20 L500,20 C320,45 160,55 0,95 Z" fill="rgba(255,255,255,0.05)"/>
+        <path d="M0,110 C160,150 320,145 500,100 L500,140 L0,140 Z" fill="rgba(210,43,43,0.18)"/>
+      </svg>
+    </div>
+    <div class="topbar-inner">
+      <div class="brand" id="brand-home">
+        <img src="/logo.png" alt="Knight Rider logo">
+        <div class="brand-text">
+          <b>Knight Rider</b>
+          <span id="topbar-subtitle">DASHBOARD</span>
+        </div>
+      </div>
+      <div id="back-slot"></div>
+      <div class="topbar-right">
+        <div class="user-chip">
+          <div class="user-avatar" id="user-avatar">--</div>
+          <div class="user-meta">
+            <b id="user-name">—</b>
+            <span id="user-role">—</span>
+          </div>
+        </div>
+        <button class="logout-btn" id="logout-btn">Sign out</button>
+      </div>
+    </div>
+    <div class="stripe-bottom"></div>
+  </header>
+
+  <main>
+    <div id="screen-hub"></div>
+    <div id="screen-dispatch" class="hidden"></div>
+    <div id="screen-driver" class="hidden"></div>
+    <div id="screen-placeholder" class="hidden"></div>
+  </main>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal-body"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = "https://ekufzrequwropdroobbr.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrdWZ6cmVxdXdyb3Bkcm9vYmJyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyOTA4MjYsImV4cCI6MjEwMzg2NjgyNn0.rn3b4oI6elxjeo-FWMV_e1jvPEbSfiFkKaGtnucZg34";
+
+async function sb(path, opts={}){
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...opts,
+    headers:{
+      "apikey": SUPABASE_KEY,
+      "Authorization": `Bearer ${SUPABASE_KEY}`,
+      "Content-Type":"application/json",
+      "Prefer": opts.prefer || "return=representation",
+      ...(opts.headers||{})
+    }
+  });
+  if(!res.ok){ const t = await res.text(); throw new Error(`Supabase error ${res.status}: ${t}`); }
+  if(res.status === 204) return null;
+  return res.json();
+}
+
+const SERVICE_LABELS = {
+  airport_transfer:"Airport Transfer", corporate:"Corporate", tour:"Tour",
+  shuttle:"Shuttle", crew_change:"Crew Change", trucking:"Trucking",
+  rental:"Vehicle Rental", security:"Security Escort", forklift:"Forklift", other:"Other"
+};
+const VEHICLE_LABELS = {
+  car:"Car", suv:"SUV", mini_bus:"Mini-Bus (8–12)", micro_bus:"Micro-Bus (25–28)",
+  large_bus:"Large Bus (34–42)", extra_large_bus:"Extra Large Bus (54)", truck:"Truck", other:"Other"
+};
+const LOCATIONS = ["Cheddi Jagan International Airport","Ogle Airport","Georgetown","Mahaica","Mahaicony","Rosignol","New Amsterdam","Canje","Rosehall","Corriverton","Moleson Creek","West Bank Demerara","Wales","Leonora","Parika"];
+const STATUS_COLS = [
+  {key:"pending", label:"Pending"}, {key:"assigned", label:"Assigned"},
+  {key:"in_progress", label:"In Progress"}, {key:"completed", label:"Completed"},
+];
+
+const ICONS = {
+  dispatch:`<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="6" r="2.4" stroke="currentColor" stroke-width="1.8"/><circle cx="19" cy="18" r="2.4" stroke="currentColor" stroke-width="1.8"/><path d="M7 7 L17 17" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2.5 3" stroke-linecap="round"/><path d="M12 4 L14 4 L14 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  fleet:`<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="9" width="19" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/><path d="M5 9 L7 5 H15 L18.5 9" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="7" cy="17.5" r="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="17" cy="17.5" r="1.8" stroke="currentColor" stroke-width="1.6"/></svg>`,
+  hr:`<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="17" cy="7" r="2.2" stroke="currentColor" stroke-width="1.6"/><path d="M15.5 19c.3-2.3 1.9-4 3.8-4.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  fuel:`<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="9" height="16" rx="1.3" stroke="currentColor" stroke-width="1.8"/><path d="M13 9 H16 L18.5 11.5 V17 a1.5 1.5 0 0 1 -3 0 V13.5 H13" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M6.5 8 H10.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  reports:`<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4 20 V10" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M11 20 V4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M18 20 V13" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M2.5 20 H21.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  mytrips:`<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="4" y="3.5" width="16" height="17" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7.5 9 L9 10.5 L12 7.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 9 H17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M7.5 15 L9 16.5 L12 13.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 15 H17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+};
+
+let state = { user:null, screen:'hub', trips:[], drivers:[], vehicles:[], staff:[], loading:true };
+
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'), 2600);
+}
+function fmtDate(d){ const dt = new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+function fmtTime(t){ const [h,m]=t.split(':'); const hh=parseInt(h,10); const ampm=hh>=12?'PM':'AM'; const h12=((hh+11)%12)+1; return `${h12}:${m} ${ampm}`; }
+function initials(name){ return name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
+function t_esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+/* ============ AUTH ============ */
+document.getElementById('login-form').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const email = document.getElementById('login-email').value.trim().toLowerCase();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.classList.remove('show');
+  try{
+    const rows = await sb(`staff?email=eq.${encodeURIComponent(email)}&select=*`);
+    const match = rows.find(r => r.password === password);
+    if(!match){
+      errEl.textContent = "We couldn't find a matching account. Check your email and password.";
+      errEl.classList.add('show');
+      return;
+    }
+    state.user = match;
+    document.getElementById('screen-login').style.display = 'none';
+    document.getElementById('app-shell').style.display = 'flex';
+    document.getElementById('user-avatar').textContent = initials(match.full_name);
+    document.getElementById('user-name').textContent = match.full_name;
+    document.getElementById('user-role').textContent = match.role;
+    goHub();
+    loadAll();
+  }catch(err){
+    errEl.textContent = "Couldn't reach the server. Please try again.";
+    errEl.classList.add('show');
+  }
+});
+document.getElementById('logout-btn').onclick = ()=>{
+  state.user = null;
+  document.getElementById('app-shell').style.display = 'none';
+  document.getElementById('screen-login').style.display = 'flex';
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-password').value = '';
+};
+document.getElementById('brand-home').onclick = goHub;
+
+/* ============ DATA LOAD ============ */
+async function loadAll(){
+  state.loading = true;
+  renderCurrentScreen();
+  const [trips, drivers, vehicles] = await Promise.all([
+    sb('trips?select=*,drivers(id,full_name),vehicles(id,plate_number,category)&order=pickup_date.asc,pickup_time.asc'),
+    sb('drivers?select=*&order=full_name.asc'),
+    sb('vehicles?select=*&order=plate_number.asc'),
+  ]);
+  state.trips = trips; state.drivers = drivers; state.vehicles = vehicles;
+  state.loading = false;
+  renderCurrentScreen();
+}
+
+/* ============ ROUTING ============ */
+function showScreen(key){
+  ['hub','dispatch','driver','placeholder'].forEach(k=>{
+    document.getElementById('screen-'+k).classList.toggle('hidden', k!==key);
+  });
+  document.getElementById('back-slot').innerHTML = key==='hub' ? '' :
+    `<button class="back-btn" id="back-to-hub"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 5 L8 12 L15 19" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Dashboard</button>`;
+  const back = document.getElementById('back-to-hub');
+  if(back) back.onclick = goHub;
+  document.getElementById('topbar-subtitle').textContent =
+    key==='hub' ? 'DASHBOARD' : key==='dispatch' ? 'TRIP DISPATCH' : key==='driver' ? 'MY TRIPS' : 'MODULE';
+  window.scrollTo(0,0);
+}
+function goHub(){ state.screen='hub'; showScreen('hub'); renderCurrentScreen(); }
+function goDispatch(){ state.screen='dispatch'; showScreen('dispatch'); renderCurrentScreen(); }
+function goDriver(){ state.screen='driver'; showScreen('driver'); renderCurrentScreen(); }
+function goPlaceholder(mod){ state.screen='placeholder'; state.placeholderMod = mod; showScreen('placeholder'); renderCurrentScreen(); }
+
+function renderCurrentScreen(){
+  if(state.screen==='hub') renderHub();
+  else if(state.screen==='dispatch') renderDispatch();
+  else if(state.screen==='driver') renderDriver();
+  else if(state.screen==='placeholder') renderPlaceholder();
+}
+
+/* ============ HUB ============ */
+const PLACEHOLDER_MODULES = {
+  fleet:{ icon:'fleet', title:'Fleet & Vehicles', desc:'Vehicle registry, registration & licensing dates, servicing schedules.' },
+  hr:{ icon:'hr', title:'Drivers & HR', desc:'Staff records, licenses, certifications, attendance and scheduling.' },
+  fuel:{ icon:'fuel', title:'Fuel Requisitions', desc:'Fuel requests, approvals and consumption tracking per vehicle.' },
+  reports:{ icon:'reports', title:'Reports & Analytics', desc:'Trip volume, on-time performance and fleet utilization.' },
+};
+
+function renderHub(){
+  const el = document.getElementById('screen-hub');
+  if(state.loading){ el.innerHTML = '<div class="loading">Loading dashboard…</div>'; return; }
+  const isAdmin = state.user.role === 'admin';
+  const pendingCt = state.trips.filter(t=>t.status==='pending').length;
+  const myTripsCt = state.trips.filter(t=> t.driver_id===state.user.driver_id && ['assigned','in_progress'].includes(t.status)).length;
+
+  let cards = '';
+  if(isAdmin){
+    cards += moduleCard('dispatch', 'dispatch', 'Trip Dispatch', 'Book trips, assign drivers and vehicles, track status in real time.',
+      pendingCt>0 ? `<span class="module-stat">${pendingCt} awaiting assignment</span>` : `<span class="module-stat ok">All trips assigned</span>`, false, goDispatch);
+    Object.entries(PLACEHOLDER_MODULES).forEach(([key,m])=>{
+      cards += moduleCard(key, m.icon, m.title, m.desc, '', true, ()=>goPlaceholder(key));
+    });
+  } else {
+    cards += moduleCard('driver', 'mytrips', 'My Trips', 'View your assigned pickups and mark trips started or completed.',
+      myTripsCt>0 ? `<span class="module-stat">${myTripsCt} active trip${myTripsCt===1?'':'s'}</span>` : `<span class="module-stat ok">No active trips</span>`, false, goDriver);
+    cards += moduleCard('hr', 'hr', 'My Profile', 'License, certifications and driving history.', '', true, ()=>goPlaceholder('hr'));
+  }
+
+  el.innerHTML = `
+    <div class="hub-head">
+      <h1>Welcome back, ${state.user.full_name.split(' ')[0]}</h1>
+      <p>${isAdmin ? 'Select a module to get started.' : "Here's your operations dashboard."}</p>
+    </div>
+    <div class="card-grid" id="card-grid"></div>
+  `;
+  document.getElementById('card-grid').innerHTML = cards;
+  document.querySelectorAll('.module-card').forEach(c=>{
+    c.onclick = window['__modclick_'+c.dataset.key];
+  });
+}
+function moduleCard(key, icon, title, desc, statHtml, disabled, onClick){
+  window['__modclick_'+key] = disabled ? ()=>onClick() : onClick;
+  return `
+    <div class="module-card ${disabled?'disabled':''}" data-key="${key}">
+      ${disabled ? '<span class="soon-tag">Coming soon</span>' : ''}
+      <div class="module-icon">${ICONS[icon]}</div>
+      <h3>${title}</h3>
+      <p>${desc}</p>
+      ${statHtml}
+    </div>
+  `;
+}
+
+/* ============ PLACEHOLDER MODULE ============ */
+function renderPlaceholder(){
+  const m = PLACEHOLDER_MODULES[state.placeholderMod];
+  const el = document.getElementById('screen-placeholder');
+  el.innerHTML = `
+    <div class="placeholder-wrap">
+      <div class="module-icon" style="width:64px;height:64px;">${ICONS[m.icon]}</div>
+      <h2>${m.title}</h2>
+      <p>${m.desc} This module is next on the build list — the trip dispatch system you're using now was built first since it's the highest-priority workflow.</p>
+      <button class="btn btn-ghost" onclick="goHub()">Back to dashboard</button>
+    </div>
+  `;
+}
+
+/* ============ DISPATCH MODULE ============ */
+function renderDispatch(){
+  const el = document.getElementById('screen-dispatch');
+  if(state.loading){ el.innerHTML = '<div class="loading">Loading dispatch board…</div>'; return; }
+
+  const pendingCt = state.trips.filter(t=>t.status==='pending').length;
+  const availDrivers = state.drivers.filter(d=>d.status==='available').length;
+  const availVehicles = state.vehicles.filter(v=>v.status==='available').length;
+  const todayStr = new Date().toISOString().slice(0,10);
+  const todayCt = state.trips.filter(t=>t.pickup_date===todayStr).length;
+
+  el.innerHTML = `
+    <div class="stats">
+      <div class="stat"><div class="n">${state.trips.length}</div><div class="l">Total trips</div></div>
+      <div class="stat ${pendingCt>0?'alert':''}"><div class="n">${pendingCt}</div><div class="l">Awaiting assignment</div></div>
+      <div class="stat"><div class="n">${availDrivers}</div><div class="l">Drivers available</div></div>
+      <div class="stat"><div class="n">${availVehicles}</div><div class="l">Vehicles available</div></div>
+      <div class="stat"><div class="n">${todayCt}</div><div class="l">Trips today</div></div>
+    </div>
+    <div class="section-head"><h2>Dispatch board</h2><button class="btn btn-primary" id="btn-new-trip">+ New trip request</button></div>
+    <div class="board" id="board"></div>
+    <div class="section-head"><h2>Rosters</h2></div>
+    <div class="rosters">
+      <div class="roster" id="roster-drivers"><h3>Drivers</h3></div>
+      <div class="roster" id="roster-vehicles"><h3>Vehicles</h3></div>
+    </div>
+  `;
+
+  const board = document.getElementById('board');
+  STATUS_COLS.forEach(col=>{
+    const items = state.trips.filter(t=>t.status===col.key);
+    const colEl = document.createElement('div'); colEl.className='col';
+    colEl.innerHTML = `<div class="col-head"><b>${col.label}</b><span class="count">${items.length}</span></div>`;
+    if(items.length===0) colEl.innerHTML += `<div class="empty-col">No trips</div>`;
+    else items.forEach(t=> colEl.appendChild(tripCard(t)) );
+    board.appendChild(colEl);
+  });
+  document.getElementById('btn-new-trip').onclick = openNewTripModal;
+
+  const rd = document.getElementById('roster-drivers');
+  state.drivers.forEach(d=>{
+    const row = document.createElement('div'); row.className='roster-row';
+    row.innerHTML = `
+      <div><div class="name">${d.full_name}</div><div class="sub">${d.license_number||''}</div></div>
+      <select class="status-pick" data-driver="${d.id}">
+        <option value="available" ${d.status==='available'?'selected':''}>Available</option>
+        <option value="on_trip" ${d.status==='on_trip'?'selected':''}>On Trip</option>
+        <option value="off_duty" ${d.status==='off_duty'?'selected':''}>Off Duty</option>
+      </select>`;
+    rd.appendChild(row);
+  });
+  rd.querySelectorAll('select').forEach(s=>{ s.onchange = async (e)=>{
+    await sb(`drivers?id=eq.${e.target.dataset.driver}`, {method:'PATCH', body:JSON.stringify({status:e.target.value})});
+    toast('Driver status updated'); loadAll();
+  };});
+
+  const rv = document.getElementById('roster-vehicles');
+  state.vehicles.forEach(v=>{
+    const row = document.createElement('div'); row.className='roster-row';
+    row.innerHTML = `
+      <div><div class="name">${v.plate_number} <span class="sub">· ${VEHICLE_LABELS[v.category]||v.category}</span></div><div class="sub">${v.make_model||''}${v.capacity?` · ${v.capacity} seats`:''}</div></div>
+      <select class="status-pick" data-vehicle="${v.id}">
+        <option value="available" ${v.status==='available'?'selected':''}>Available</option>
+        <option value="assigned" ${v.status==='assigned'?'selected':''}>Assigned</option>
+        <option value="maintenance" ${v.status==='maintenance'?'selected':''}>Maintenance</option>
+      </select>`;
+    rv.appendChild(row);
+  });
+  rv.querySelectorAll('select').forEach(s=>{ s.onchange = async (e)=>{
+    await sb(`vehicles?id=eq.${e.target.dataset.vehicle}`, {method:'PATCH', body:JSON.stringify({status:e.target.value})});
+    toast('Vehicle status updated'); loadAll();
+  };});
+}
+
+function tripCard(t){
+  const card = document.createElement('div');
+  card.className = `card st-${t.status}`;
+  const assignedText = t.driver_id ? `${t.drivers?.full_name||'Driver'} · ${t.vehicles?.plate_number||'No vehicle'}` : null;
+  let actions = '';
+  if(t.status==='pending') actions += `<button class="btn btn-primary btn-sm" data-act="assign" data-id="${t.id}">Assign</button>`;
+  if(t.status==='assigned') actions += `<button class="btn btn-ghost btn-sm" data-act="start" data-id="${t.id}">Start trip</button>`;
+  if(t.status==='in_progress') actions += `<button class="btn btn-ghost btn-sm" data-act="complete" data-id="${t.id}">Complete</button>`;
+  if(t.status!=='completed' && t.status!=='cancelled') actions += `<button class="btn btn-ghost btn-sm" data-act="cancel" data-id="${t.id}">Cancel</button>`;
+  card.innerHTML = `
+    <div class="svc">${SERVICE_LABELS[t.service_type]||t.service_type}</div>
+    <div class="cust">${t.customer_name}</div>
+    ${t.customer_company?`<div class="co">${t.customer_company}</div>`:''}
+    <div class="route">${t.pickup_location}${t.dropoff_location?`<span class="arrow">→</span>${t.dropoff_location}`:''}</div>
+    <div class="when">${fmtDate(t.pickup_date)} · ${fmtTime(t.pickup_time)}${t.passengers?` · ${t.passengers} pax`:''}</div>
+    <div class="assign-line ${assignedText?'':'empty'}">${assignedText || 'No driver/vehicle assigned yet'}</div>
+    <div class="card-actions">${actions}</div>`;
+  card.querySelectorAll('[data-act]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const act = btn.dataset.act;
+      if(act==='assign') openAssignModal(t);
+      else if(act==='start') updateTripStatus(t.id,'in_progress');
+      else if(act==='complete') updateTripStatus(t.id,'completed');
+      else if(act==='cancel') updateTripStatus(t.id,'cancelled');
+    };
+  });
+  return card;
+}
+async function updateTripStatus(id,status){
+  await sb(`trips?id=eq.${id}`, {method:'PATCH', body:JSON.stringify({status})});
+  toast(`Trip marked ${status.replace('_',' ')}`); loadAll();
+}
+
+function openOverlay(html){ document.getElementById('modal-body').innerHTML = html; document.getElementById('overlay').classList.add('show'); }
+function closeOverlay(){ document.getElementById('overlay').classList.remove('show'); }
+document.getElementById('overlay').addEventListener('click',(e)=>{ if(e.target.id==='overlay') closeOverlay(); });
+
+function openNewTripModal(){
+  const datalist = LOCATIONS.map(l=>`<option value="${l}">`).join('');
+  openOverlay(`
+    <h3>New trip request</h3>
+    <form id="trip-form">
+      <div class="field"><label>Service type</label>
+        <select name="service_type">${Object.entries(SERVICE_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Customer name</label><input name="customer_name" required></div>
+        <div class="field"><label>Company (optional)</label><input name="customer_company"></div>
+      </div>
+      <div class="field"><label>Customer phone</label><input name="customer_phone"></div>
+      <div class="field-row">
+        <div class="field"><label>Pickup location</label><input name="pickup_location" list="loc-list" required placeholder="e.g. CJIA Airport"></div>
+        <div class="field"><label>Drop-off location</label><input name="dropoff_location" list="loc-list" placeholder="e.g. Georgetown"></div>
+      </div>
+      <datalist id="loc-list">${datalist}</datalist>
+      <div class="field-row">
+        <div class="field"><label>Pickup date</label><input type="date" name="pickup_date" required></div>
+        <div class="field"><label>Pickup time</label><input type="time" name="pickup_time" required></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Passengers / cargo qty</label><input type="number" name="passengers" min="1"></div>
+        <div class="field"><label>Preferred vehicle</label>
+          <select name="preferred_vehicle"><option value="">Any</option>${Object.entries(VEHICLE_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div class="field"><label>Notes</label><textarea name="notes" rows="2"></textarea></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancel-modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create trip request</button>
+      </div>
+    </form>`);
+  document.getElementById('cancel-modal').onclick = closeOverlay;
+  document.getElementById('trip-form').onsubmit = async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = Object.fromEntries(fd.entries());
+    delete body.preferred_vehicle;
+    if(body.passengers) body.passengers = parseInt(body.passengers,10); else delete body.passengers;
+    ['customer_company','dropoff_location','notes','customer_phone'].forEach(k=>{ if(!body[k]) delete body[k]; });
+    await sb('trips', {method:'POST', body:JSON.stringify(body)});
+    closeOverlay(); toast('Trip request created'); loadAll();
+  };
+}
+
+function openAssignModal(trip){
+  const availDrivers = state.drivers.filter(d=>d.status==='available');
+  const availVehicles = state.vehicles.filter(v=>v.status==='available');
+  openOverlay(`
+    <h3>Assign trip</h3>
+    <p style="font-size:13px;color:var(--ink-soft);margin:2px 0 16px;">${t_esc(trip.customer_name)} · ${SERVICE_LABELS[trip.service_type]} · ${fmtDate(trip.pickup_date)} · ${fmtTime(trip.pickup_time)}</p>
+    <form id="assign-form">
+      <div class="field"><label>Driver</label>
+        <select name="driver_id" required>
+          <option value="">Select a driver</option>
+          ${availDrivers.map(d=>`<option value="${d.id}">${d.full_name}</option>`).join('')}
+        </select>
+        ${availDrivers.length===0?'<div style="font-size:12px;color:var(--red);margin-top:4px;">No drivers currently available</div>':''}
+      </div>
+      <div class="field"><label>Vehicle</label>
+        <select name="vehicle_id" required>
+          <option value="">Select a vehicle</option>
+          ${availVehicles.map(v=>`<option value="${v.id}">${v.plate_number} — ${VEHICLE_LABELS[v.category]||v.category}${v.capacity?` (${v.capacity} seats)`:''}</option>`).join('')}
+        </select>
+        ${availVehicles.length===0?'<div style="font-size:12px;color:var(--red);margin-top:4px;">No vehicles currently available</div>':''}
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancel-modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Confirm assignment</button>
+      </div>
+    </form>`);
+  document.getElementById('cancel-modal').onclick = closeOverlay;
+  document.getElementById('assign-form').onsubmit = async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const driver_id = fd.get('driver_id'), vehicle_id = fd.get('vehicle_id');
+    await sb(`trips?id=eq.${trip.id}`, {method:'PATCH', body:JSON.stringify({driver_id, vehicle_id, status:'assigned'})});
+    await sb(`drivers?id=eq.${driver_id}`, {method:'PATCH', body:JSON.stringify({status:'on_trip'})});
+    await sb(`vehicles?id=eq.${vehicle_id}`, {method:'PATCH', body:JSON.stringify({status:'assigned'})});
+    closeOverlay(); toast('Driver and vehicle assigned'); loadAll();
+  };
+}
+
+/* ============ DRIVER MODULE ============ */
+function renderDriver(){
+  const el = document.getElementById('screen-driver');
+  if(state.loading){ el.innerHTML = '<div class="loading">Loading…</div>'; return; }
+  const driverId = state.user.driver_id;
+  const myTrips = state.trips.filter(t=> t.driver_id===driverId && ['assigned','in_progress'].includes(t.status))
+    .sort((a,b)=> (a.pickup_date+a.pickup_time).localeCompare(b.pickup_date+b.pickup_time));
+  const completedCt = state.trips.filter(t=> t.driver_id===driverId && t.status==='completed').length;
+
+  el.innerHTML = `
+    <div class="driver-summary">
+      <div><div class="name">${state.user.full_name}</div><div class="sub">DRIVER</div></div>
+      <div class="pill"><b>${completedCt}</b>trips completed all-time</div>
+    </div>
+    <div class="section-head"><h2>My assigned trips</h2></div>
+    <div class="trip-list" id="my-trips"></div>`;
+
+  const list = document.getElementById('my-trips');
+  if(myTrips.length===0){
+    list.innerHTML = `<div class="empty-state">No trips assigned right now. Check back once dispatch assigns you a job.</div>`;
+    return;
+  }
+  myTrips.forEach(t=>{
+    const row = document.createElement('div'); row.className = `trip-row ${t.status}`;
+    const nextAction = t.status==='assigned'
+      ? `<button class="btn btn-primary btn-sm" data-act="start" data-id="${t.id}">Start trip</button>`
+      : `<button class="btn btn-primary btn-sm" data-act="complete" data-id="${t.id}">Complete trip</button>`;
+    row.innerHTML = `
+      <div class="left">
+        <div class="svc">${SERVICE_LABELS[t.service_type]||t.service_type} <span class="badge ${t.status==='in_progress'?'b-in_progress':'b-assigned'}">${t.status==='in_progress'?'In progress':'Assigned'}</span></div>
+        <div class="route">${t.pickup_location}${t.dropoff_location?` → ${t.dropoff_location}`:''}</div>
+        <div class="meta">${fmtDate(t.pickup_date)} · ${fmtTime(t.pickup_time)} · ${t.customer_name}${t.passengers?` · ${t.passengers} pax`:''} · ${t.vehicles?.plate_number||''}</div>
+      </div>
+      <div>${nextAction}</div>`;
+    list.appendChild(row);
+  });
+  list.querySelectorAll('[data-act]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.dataset.id;
+      if(btn.dataset.act==='start'){
+        await sb(`trips?id=eq.${id}`, {method:'PATCH', body:JSON.stringify({status:'in_progress'})});
+        toast('Trip started');
+      } else {
+        const trip = state.trips.find(t=>t.id===id);
+        await sb(`trips?id=eq.${id}`, {method:'PATCH', body:JSON.stringify({status:'completed'})});
+        if(trip){
+          await sb(`drivers?id=eq.${trip.driver_id}`, {method:'PATCH', body:JSON.stringify({status:'available'})});
+          await sb(`vehicles?id=eq.${trip.vehicle_id}`, {method:'PATCH', body:JSON.stringify({status:'available'})});
+        }
+        toast('Trip completed');
+      }
+      loadAll();
+    };
+  });
+}
+</script>
+</body>
+</html>
