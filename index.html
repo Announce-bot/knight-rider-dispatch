@@ -328,7 +328,7 @@
         <button type="submit" class="btn btn-primary">Sign in</button>
       </form>
       <div class="demo-hint">
-        <b>Demo access —</b> admin@knightriderbus.com / devon@knightriderbus.com / kester@knightriderbus.com / anand@knightriderbus.com<br>
+        <b>Demo access —</b> admin@knightriderbus.com (Administrator) · devon@knightriderbus.com / kester@knightriderbus.com / vibert@knightriderbus.com (Driver)<br>
         Password for all demo accounts: <b>demo1234</b>
       </div>
     </div>
@@ -385,12 +385,14 @@
 const SUPABASE_URL = "/supabase";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrdWZ6cmVxdXdyb3Bkcm9vYmJyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyOTA4MjYsImV4cCI6MjEwMzg2NjgyNn0.rn3b4oI6elxjeo-FWMV_e1jvPEbSfiFkKaGtnucZg34";
 
+let session = null; // { access_token, refresh_token, user }
+
 async function sb(path, opts={}){
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...opts,
     headers:{
       "apikey": SUPABASE_KEY,
-      "Authorization": `Bearer ${SUPABASE_KEY}`,
+      "Authorization": `Bearer ${session ? session.access_token : SUPABASE_KEY}`,
       "Content-Type":"application/json",
       "Prefer": opts.prefer || "return=representation",
       ...(opts.headers||{})
@@ -398,6 +400,19 @@ async function sb(path, opts={}){
   });
   if(!res.ok){ const t = await res.text(); throw new Error(`Supabase error ${res.status}: ${t}`); }
   if(res.status === 204) return null;
+  return res.json();
+}
+
+async function signIn(email, password){
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  if(!res.ok){
+    const err = await res.json().catch(()=>({}));
+    throw new Error(err.error_description || err.msg || 'Invalid email or password.');
+  }
   return res.json();
 }
 
@@ -444,7 +459,8 @@ const ICONS = {
   mytrips:`<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="4" y="3.5" width="16" height="17" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7.5 9 L9 10.5 L12 7.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 9 H17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M7.5 15 L9 16.5 L12 13.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 15 H17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
 };
 
-let state = { user:null, screen:'hub', bookings:[], drivers:[], vehicles:[], staff:[], fuelRequests:[], loading:true };
+let state = { user:null, screen:'hub', bookings:[], drivers:[], vehicles:[], fuelRequests:[], permissions:new Set(), loading:true };
+function can(permKey){ return state.permissions.has(permKey); }
 
 function toast(msg){
   const el = document.getElementById('toast');
@@ -462,30 +478,44 @@ document.getElementById('login-form').addEventListener('submit', async (e)=>{
   const email = document.getElementById('login-email').value.trim().toLowerCase();
   const password = document.getElementById('login-password').value;
   const errEl = document.getElementById('login-error');
+  const submitBtn = e.target.querySelector('button[type=submit]');
   errEl.classList.remove('show');
+  submitBtn.disabled = true; submitBtn.textContent = 'Signing in…';
   try{
-    const rows = await sb(`staff?email=eq.${encodeURIComponent(email)}&select=*`);
-    const match = rows.find(r => r.password === password);
-    if(!match){
-      errEl.textContent = "We couldn't find a matching account. Check your email and password.";
-      errEl.classList.add('show');
-      return;
-    }
-    state.user = match;
+    session = await signIn(email, password);
+
+    // Load profile + role + permission set (RLS lets a user read their own profile)
+    const profiles = await sb(`profiles?id=eq.${session.user.id}&select=*,roles(name)`);
+    const profile = profiles[0];
+    if(!profile){ throw new Error('No profile found for this account.'); }
+    if(profile.account_status !== 'Active'){ throw new Error('This account is ' + profile.account_status.toLowerCase() + '.'); }
+
+    const rolePerms = await sb(`role_permissions?role_id=eq.${profile.role_id}&select=permissions(key)`);
+    state.permissions = new Set(rolePerms.map(rp=>rp.permissions.key));
+    state.user = {
+      id: profile.id, full_name: profile.full_name, email: profile.email,
+      role: profile.roles?.name || '—', driver_id: profile.driver_id,
+    };
+
+    sb(`profiles?id=eq.${profile.id}`, {method:'PATCH', body:JSON.stringify({last_login:new Date().toISOString()})}).catch(()=>{});
+
     document.getElementById('screen-login').style.display = 'none';
     document.getElementById('app-shell').style.display = 'flex';
-    document.getElementById('user-avatar').textContent = initials(match.full_name);
-    document.getElementById('user-name').textContent = match.full_name;
-    document.getElementById('user-role').textContent = match.role;
+    document.getElementById('user-avatar').textContent = initials(state.user.full_name);
+    document.getElementById('user-name').textContent = state.user.full_name;
+    document.getElementById('user-role').textContent = state.user.role;
     goHub();
     loadAll();
   }catch(err){
-    errEl.textContent = "Couldn't reach the server. Please try again.";
+    errEl.textContent = err.message || "Couldn't sign in. Please try again.";
     errEl.classList.add('show');
+  }finally{
+    submitBtn.disabled = false; submitBtn.textContent = 'Sign in';
   }
 });
 document.getElementById('logout-btn').onclick = ()=>{
-  state.user = null;
+  session = null;
+  state.user = null; state.permissions = new Set();
   document.getElementById('app-shell').style.display = 'none';
   document.getElementById('screen-login').style.display = 'flex';
   document.getElementById('login-email').value = '';
@@ -540,12 +570,12 @@ const PLACEHOLDER_MODULES = {
   fleet:{ icon:'fleet', title:'Fleet & Vehicles', desc:'Vehicle registry, registration & licensing dates, servicing schedules.' },
   hr:{ icon:'hr', title:'Drivers & HR', desc:'Staff records, licenses, certifications, attendance and scheduling.' },
   reports:{ icon:'reports', title:'Reports & Analytics', desc:'Trip volume, on-time performance and fleet utilization.' },
+  profile:{ icon:'hr', title:'My Profile', desc:'Personal info, employment details, documents and HR self-service requests.' },
 };
 
 function renderHub(){
   const el = document.getElementById('screen-hub');
   if(state.loading){ el.innerHTML = '<div class="loading">Loading dashboard…</div>'; return; }
-  const isAdmin = state.user.role === 'admin';
   const todayStr = new Date().toISOString().slice(0,10);
   const activeBookings = state.bookings.filter(b=>b.active);
   const unassignedCt = activeBookings.filter(b=>!b.assigned_driver_id).length;
@@ -553,38 +583,46 @@ function renderHub(){
   const myCt = state.bookings.filter(b=> b.assigned_driver_id===state.user.driver_id && b.active).length;
   const pendingFuelCt = state.fuelRequests.filter(f=>!amountIsRecorded(f.guyoil_amount)).length;
 
-  let snapshot = '';
   let opsCards = '', fleetCards = '', insightCards = '';
-  if(isAdmin){
-    snapshot = `
-      <div class="stats">
-        <div class="stat"><div class="n">${activeBookings.length}</div><div class="l">Active bookings</div></div>
-        <div class="stat"><div class="n">${todayCt}</div><div class="l">Bookings today</div></div>
-        <div class="stat ${unassignedCt>0?'alert':''}"><div class="n">${unassignedCt}</div><div class="l">Unassigned bookings</div></div>
-        <div class="stat ${pendingFuelCt>0?'alert':''}"><div class="n">${pendingFuelCt}</div><div class="l">Fuel awaiting amount</div></div>
-      </div>`;
+  const snapshotStats = [];
+
+  if(can('operations.view_bookings')){
+    snapshotStats.push(`<div class="stat"><div class="n">${activeBookings.length}</div><div class="l">Active bookings</div></div>`);
+    snapshotStats.push(`<div class="stat"><div class="n">${todayCt}</div><div class="l">Bookings today</div></div>`);
+    snapshotStats.push(`<div class="stat ${unassignedCt>0?'alert':''}"><div class="n">${unassignedCt}</div><div class="l">Unassigned bookings</div></div>`);
     opsCards += moduleCard('dispatch', 'dispatch', 'Booking Board', 'Confirmed booking desk — create, edit and dispatch reservations.',
       unassignedCt>0 ? `<span class="module-stat">${unassignedCt} unassigned</span>` : `<span class="module-stat ok">All bookings assigned</span>`, false, goBoard);
+  }
+  if(can('fuel.view_requisitions')){
+    snapshotStats.push(`<div class="stat ${pendingFuelCt>0?'alert':''}"><div class="n">${pendingFuelCt}</div><div class="l">Fuel awaiting amount</div></div>`);
     opsCards += moduleCard('fuel', 'fuel', 'Fuel Requisitions', 'Voucher log, KRBS &amp; SBM kept separate, receipt scanning.',
       pendingFuelCt>0 ? `<span class="module-stat">${pendingFuelCt} awaiting amount</span>` : `<span class="module-stat ok">Nothing pending</span>`, false, goFuel);
-    fleetCards += moduleCard('fleet', 'fleet', 'Fleet & Vehicles', 'Vehicle registry, registration & licensing dates, servicing schedules.', '', true, ()=>goPlaceholder('fleet'));
-    fleetCards += moduleCard('hr', 'hr', 'Drivers & HR', 'Staff records, licenses, certifications, attendance and scheduling.', '', true, ()=>goPlaceholder('hr'));
-    insightCards += moduleCard('reports', 'reports', 'Reports & Analytics', 'Trip volume, on-time performance and fleet utilization.', '', true, ()=>goPlaceholder('reports'));
-  } else {
+  }
+  if(state.user.driver_id){
     opsCards += moduleCard('driver', 'mytrips', 'My Trips', 'View the bookings dispatch has assigned to you.',
       myCt>0 ? `<span class="module-stat">${myCt} active booking${myCt===1?'':'s'}</span>` : `<span class="module-stat ok">No active bookings</span>`, false, goDriver);
-    fleetCards += moduleCard('hr', 'hr', 'My Profile', 'License, certifications and driving history.', '', true, ()=>goPlaceholder('hr'));
   }
+  if(can('fleet.view_vehicles')){
+    fleetCards += moduleCard('fleet', 'fleet', 'Fleet & Vehicles', 'Vehicle registry, registration & licensing dates, servicing schedules.', '', true, ()=>goPlaceholder('fleet'));
+  }
+  if(can('hr.view_employees')){
+    fleetCards += moduleCard('hr', 'hr', 'Drivers & HR', 'Staff records, licenses, certifications, attendance and scheduling.', '', true, ()=>goPlaceholder('hr'));
+  }
+  fleetCards += moduleCard('profile', 'hr', 'My Profile', 'Your personal info, employment details and HR requests.', '', true, ()=>goPlaceholder('profile'));
+  if(can('reports.view_operations') || can('reports.view_fleet') || can('reports.view_fuel') || can('reports.view_hr')){
+    insightCards += moduleCard('reports', 'reports', 'Reports & Analytics', 'Trip volume, on-time performance and fleet utilization.', '', true, ()=>goPlaceholder('reports'));
+  }
+
+  const snapshot = snapshotStats.length ? `<div class="stats">${snapshotStats.join('')}</div>` : '';
 
   el.innerHTML = `
     <div class="hub-head">
       <h1>Welcome back, ${state.user.full_name.split(' ')[0]}</h1>
-      <p>${isAdmin ? "Here's what's happening across operations right now." : "Here's your operations dashboard."}</p>
+      <p>${state.user.role} — here's what's available to you.</p>
     </div>
     ${snapshot}
-    <div class="hub-section"><h2>Operations</h2></div>
-    <div class="card-grid">${opsCards}</div>
-    ${fleetCards ? `<div class="hub-section"><h2>${isAdmin?'Fleet &amp; People':'Profile'}</h2></div><div class="card-grid">${fleetCards}</div>` : ''}
+    ${opsCards ? `<div class="hub-section"><h2>Operations</h2></div><div class="card-grid">${opsCards}</div>` : ''}
+    ${fleetCards ? `<div class="hub-section"><h2>Fleet &amp; People</h2></div><div class="card-grid">${fleetCards}</div>` : ''}
     ${insightCards ? `<div class="hub-section"><h2>Insights</h2></div><div class="card-grid">${insightCards}</div>` : ''}
   `;
   document.querySelectorAll('.module-card').forEach(c=>{
@@ -650,7 +688,7 @@ function renderBoard(){
       <div class="stat ${unassignedDriver>0?'alert':''}"><div class="n">${unassignedDriver}</div><div class="l">Unassigned driver</div></div>
       <div class="stat ${unassignedVehicle>0?'alert':''}"><div class="n">${unassignedVehicle}</div><div class="l">Unassigned vehicle</div></div>
     </div>
-    <div class="section-head"><div class="title-group"><span class="section-head-icon icon-dispatch">${ICONS.dispatch}</span><h2>Booking board</h2></div><button class="btn btn-primary" id="btn-new-booking">+ New booking</button></div>
+    <div class="section-head"><div class="title-group"><span class="section-head-icon icon-dispatch">${ICONS.dispatch}</span><h2>Booking board</h2></div>${can('operations.create_bookings') ? `<button class="btn btn-primary" id="btn-new-booking">+ New booking</button>` : ''}</div>
     <div class="search-bar">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21 L16.5 16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <input type="text" id="booking-search" placeholder="Search any booking — customer, location, driver, vehicle, booking ID, flight #…" value="${t_esc(state.bookingSearch)}">
@@ -663,7 +701,8 @@ function renderBoard(){
       <div class="roster" id="roster-vehicles"></div>
     </div>
   `;
-  document.getElementById('btn-new-booking').onclick = ()=>openBookingModal(null);
+  const newBookingBtn = document.getElementById('btn-new-booking');
+  if(newBookingBtn) newBookingBtn.onclick = ()=>openBookingModal(null);
   const searchInput = document.getElementById('booking-search');
   searchInput.oninput = (e)=>{
     state.bookingSearch = e.target.value;
@@ -734,47 +773,54 @@ function bookingCardHtml(b){
 }
 
 function renderRosterLists(){
+  const canWriteDrivers = can('hr.edit_employees') || can('hr.create_employees');
+  const canWriteVehicles = can('fleet.edit_vehicles') || can('fleet.create_vehicles');
+
   const rd = document.getElementById('roster-drivers');
   rd.innerHTML = `<div class="roster-head"><h3>Drivers</h3></div>` +
     state.drivers.map(d=>`
       <div class="roster-row">
         <div><div class="name">${d.full_name}</div>${d.license_number?`<div class="sub">${d.license_number}</div>`:''}</div>
-        <button class="icon-btn" data-del-driver="${d.id}" title="Remove"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-7 0v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        ${canWriteDrivers ? `<button class="icon-btn" data-del-driver="${d.id}" title="Remove"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-7 0v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>` : ''}
       </div>`).join('') +
-    `<div class="roster-add"><input type="text" id="new-driver-name" placeholder="Driver name"><button class="btn btn-ghost btn-sm" id="add-driver">Add</button></div>`;
-  document.getElementById('add-driver').onclick = async ()=>{
-    const input = document.getElementById('new-driver-name');
-    if(!input.value.trim()) return;
-    await sb('drivers', {method:'POST', body:JSON.stringify({full_name: input.value.trim()})});
-    toast('Driver added'); loadAll();
-  };
-  rd.querySelectorAll('[data-del-driver]').forEach(btn=>{
-    btn.onclick = async ()=>{
-      await sb(`drivers?id=eq.${btn.dataset.delDriver}`, {method:'DELETE'});
-      toast('Driver removed'); loadAll();
+    (canWriteDrivers ? `<div class="roster-add"><input type="text" id="new-driver-name" placeholder="Driver name"><button class="btn btn-ghost btn-sm" id="add-driver">Add</button></div>` : '');
+  if(canWriteDrivers){
+    document.getElementById('add-driver').onclick = async ()=>{
+      const input = document.getElementById('new-driver-name');
+      if(!input.value.trim()) return;
+      await sb('drivers', {method:'POST', body:JSON.stringify({full_name: input.value.trim()})});
+      toast('Driver added'); loadAll();
     };
-  });
+    rd.querySelectorAll('[data-del-driver]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        await sb(`drivers?id=eq.${btn.dataset.delDriver}`, {method:'DELETE'});
+        toast('Driver removed'); loadAll();
+      };
+    });
+  }
 
   const rv = document.getElementById('roster-vehicles');
   rv.innerHTML = `<div class="roster-head"><h3>Vehicles</h3></div>` +
     state.vehicles.map(v=>`
       <div class="roster-row">
         <div><div class="name">${v.plate_number}</div>${v.make_model?`<div class="sub">${v.make_model}</div>`:''}</div>
-        <button class="icon-btn" data-del-vehicle="${v.id}" title="Remove"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-7 0v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        ${canWriteVehicles ? `<button class="icon-btn" data-del-vehicle="${v.id}" title="Remove"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-7 0v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>` : ''}
       </div>`).join('') +
-    `<div class="roster-add"><input type="text" id="new-vehicle-plate" placeholder="Plate number"><button class="btn btn-ghost btn-sm" id="add-vehicle">Add</button></div>`;
-  document.getElementById('add-vehicle').onclick = async ()=>{
-    const input = document.getElementById('new-vehicle-plate');
-    if(!input.value.trim()) return;
-    await sb('vehicles', {method:'POST', body:JSON.stringify({plate_number: input.value.trim()})});
-    toast('Vehicle added'); loadAll();
-  };
-  rv.querySelectorAll('[data-del-vehicle]').forEach(btn=>{
-    btn.onclick = async ()=>{
-      await sb(`vehicles?id=eq.${btn.dataset.delVehicle}`, {method:'DELETE'});
-      toast('Vehicle removed'); loadAll();
+    (canWriteVehicles ? `<div class="roster-add"><input type="text" id="new-vehicle-plate" placeholder="Plate number"><button class="btn btn-ghost btn-sm" id="add-vehicle">Add</button></div>` : '');
+  if(canWriteVehicles){
+    document.getElementById('add-vehicle').onclick = async ()=>{
+      const input = document.getElementById('new-vehicle-plate');
+      if(!input.value.trim()) return;
+      await sb('vehicles', {method:'POST', body:JSON.stringify({plate_number: input.value.trim()})});
+      toast('Vehicle added'); loadAll();
     };
-  });
+    rv.querySelectorAll('[data-del-vehicle]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        await sb(`vehicles?id=eq.${btn.dataset.delVehicle}`, {method:'DELETE'});
+        toast('Vehicle removed'); loadAll();
+      };
+    });
+  }
 }
 
 /* ============ MODALS ============ */
@@ -830,11 +876,11 @@ function openBookingModal(booking){
           </div>
         </div>
         <div class="field-row">
-          <div class="field"><label>Assigned driver</label>
-            <select name="assigned_driver_id"><option value="">Unassigned</option>${state.drivers.map(d=>`<option value="${d.id}" ${b.assigned_driver_id===d.id?'selected':''}>${d.full_name}</option>`).join('')}</select>
+          <div class="field"><label>Assigned driver ${can('operations.assign_driver_vehicle')?'':'<span style=\"font-weight:400;color:var(--ink-soft);\">(management only)</span>'}</label>
+            <select name="assigned_driver_id" ${can('operations.assign_driver_vehicle')?'':'disabled'}><option value="">Unassigned</option>${state.drivers.map(d=>`<option value="${d.id}" ${b.assigned_driver_id===d.id?'selected':''}>${d.full_name}</option>`).join('')}</select>
           </div>
-          <div class="field"><label>Vehicle</label>
-            <select name="assigned_vehicle_id"><option value="">Unassigned</option>${state.vehicles.map(v=>`<option value="${v.id}" ${b.assigned_vehicle_id===v.id?'selected':''}>${v.plate_number}</option>`).join('')}</select>
+          <div class="field"><label>Vehicle ${can('operations.assign_driver_vehicle')?'':'<span style=\"font-weight:400;color:var(--ink-soft);\">(management only)</span>'}</label>
+            <select name="assigned_vehicle_id" ${can('operations.assign_driver_vehicle')?'':'disabled'}><option value="">Unassigned</option>${state.vehicles.map(v=>`<option value="${v.id}" ${b.assigned_vehicle_id===v.id?'selected':''}>${v.plate_number}</option>`).join('')}</select>
           </div>
         </div>
         <div class="field"><label>Booked by</label><input name="booked_by" value="${t_esc(b.booked_by||'')}"></div>
@@ -860,7 +906,7 @@ function openBookingModal(booking){
       </div>
 
       <div class="modal-actions" style="justify-content:space-between;">
-        <div>${isEdit? `<button type="button" class="btn btn-ghost btn-sm" id="btn-cancel-booking" style="color:var(--red);border-color:var(--red-bg);">Cancel booking</button>` : ''}</div>
+        <div>${(isEdit && (can('operations.cancel_bookings')||can('operations.edit_bookings')))? `<button type="button" class="btn btn-ghost btn-sm" id="btn-cancel-booking" style="color:var(--red);border-color:var(--red-bg);">Cancel booking</button>` : ''}</div>
         <div style="display:flex;gap:8px;">
           ${isEdit? `<button type="button" class="btn btn-ghost" id="btn-create-ticket">Create customer ticket</button>` : ''}
           <button type="button" class="btn btn-ghost" id="cancel-modal">Close</button>
@@ -882,7 +928,8 @@ function openBookingModal(booking){
 
   document.getElementById('cancel-modal').onclick = closeOverlay;
   if(isEdit){
-    document.getElementById('btn-cancel-booking').onclick = async ()=>{
+    const cancelBtn = document.getElementById('btn-cancel-booking');
+    if(cancelBtn) cancelBtn.onclick = async ()=>{
       await sb(`bookings?id=eq.${b.id}`, {method:'PATCH', body:JSON.stringify({active:false})});
       closeOverlay(); toast('Booking cancelled'); loadAll();
     };
@@ -899,8 +946,6 @@ function openBookingModal(booking){
       pickup_time: raw.pickup_time,
       passenger_load_count: raw.passenger_load_count ? parseFloat(raw.passenger_load_count) : null,
       transportation_type: raw.transportation_type,
-      assigned_driver_id: raw.assigned_driver_id || null,
-      assigned_vehicle_id: raw.assigned_vehicle_id || null,
       booked_by: raw.booked_by || null,
       passenger_names: raw.passenger_names || null,
       pickup_location: raw.pickup_location,
@@ -910,6 +955,13 @@ function openBookingModal(booking){
       dispatch_notes: composeNotes(raw),
       updated_at: new Date().toISOString(),
     };
+    // Assignment fields are only editable with the assign permission; the trigger enforces this
+    // server-side too, but omit entirely when disabled so we never accidentally null out an
+    // existing assignment just because this user's form didn't include it.
+    if(can('operations.assign_driver_vehicle')){
+      body.assigned_driver_id = raw.assigned_driver_id || null;
+      body.assigned_vehicle_id = raw.assigned_vehicle_id || null;
+    }
     if(isEdit){
       await sb(`bookings?id=eq.${b.id}`, {method:'PATCH', body:JSON.stringify(body)});
       toast('Booking updated');
@@ -1033,14 +1085,15 @@ function renderFuel(){
       <div class="stat ${noScanCt>0?'alert':''}"><div class="n">${noScanCt}</div><div class="l">No receipt scanned</div></div>
       <div class="stat"><div class="n">$${monthTotal.toLocaleString()}</div><div class="l">Recorded this month (GYD)</div></div>
     </div>
-    <div class="section-head"><div class="title-group"><span class="section-head-icon icon-fuel">${ICONS.fuel}</span><h2>${state.fuelProject} fuel log</h2></div><button class="btn btn-primary" id="btn-new-fuel">+ New requisition</button></div>
+    <div class="section-head"><div class="title-group"><span class="section-head-icon icon-fuel">${ICONS.fuel}</span><h2>${state.fuelProject} fuel log</h2></div>${can('fuel.create_requisitions') ? `<button class="btn btn-primary" id="btn-new-fuel">+ New requisition</button>` : ''}</div>
     <div class="fuel-list" id="fuel-list"></div>
   `;
 
   document.getElementById('project-toggle').querySelectorAll('button').forEach(btn=>{
     btn.onclick = ()=>{ state.fuelProject = btn.dataset.proj; renderFuel(); };
   });
-  document.getElementById('btn-new-fuel').onclick = ()=>openFuelModal(null);
+  const newFuelBtn = document.getElementById('btn-new-fuel');
+  if(newFuelBtn) newFuelBtn.onclick = ()=>openFuelModal(null);
 
   const list = document.getElementById('fuel-list');
   if(projFiltered.length===0){
@@ -1065,7 +1118,9 @@ function renderFuel(){
         ${f.requested_by?`<span>Req by ${f.requested_by}</span>`:''}
         ${f.fuel_type?`<span>${f.fuel_type}</span>`:''}
       </div>`;
-    card.onclick = ()=>openFuelModal(f);
+    const canEditFuel = can('fuel.create_requisitions') || can('fuel.approve_requisitions') || can('fuel.update_records');
+    if(canEditFuel) card.onclick = ()=>openFuelModal(f);
+    else card.style.cursor = 'default';
     list.appendChild(card);
   });
 }
@@ -1075,7 +1130,7 @@ async function uploadReceipt(file, vehicleReg, reqNumber){
   const filename = `${vehicleReg}-${reqNumber}`.replace(/[^a-zA-Z0-9-]/g,'_') + '.' + ext;
   const res = await fetch(`${SUPABASE_URL}/storage/v1/object/fuel-receipts/${filename}`, {
     method: 'POST',
-    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': file.type, 'x-upsert': 'true' },
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${session ? session.access_token : SUPABASE_KEY}`, 'Content-Type': file.type, 'x-upsert': 'true' },
     body: file,
   });
   if(!res.ok){ throw new Error(await res.text()); }
