@@ -239,6 +239,41 @@
     .no-print{display:none !important;}
   }
 
+  /* ============ MY PROFILE ============ */
+  .profile-header{background:linear-gradient(120deg,var(--navy) 0%,var(--navy-2) 100%);color:#fff;border-radius:14px;padding:26px 28px;margin-bottom:22px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;}
+  .profile-avatar{width:66px;height:66px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:24px;font-weight:600;flex-shrink:0;}
+  .profile-header .name{font-family:var(--head);font-size:21px;font-weight:600;}
+  .profile-header .sub{font-size:12.5px;color:#C7D0E4;font-family:var(--mono);margin-top:3px;}
+  .profile-header .badge-status{margin-left:auto;}
+  .info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px 24px;}
+  .info-item label{display:block;font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;}
+  .info-item div{font-size:13.5px;color:var(--ink);font-weight:500;}
+  .info-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px 22px;margin-bottom:16px;}
+  .info-card h3{font-family:var(--head);font-size:13.5px;margin:0 0 16px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--navy);}
+  .leave-balance{display:flex;align-items:baseline;gap:8px;margin-bottom:16px;}
+  .leave-balance .n{font-family:var(--head);font-size:32px;font-weight:600;color:var(--navy);}
+  .leave-balance .l{font-size:12.5px;color:var(--ink-soft);}
+  .request-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line);flex-wrap:wrap;}
+  .request-row:first-of-type{border-top:none;}
+  .request-row .rtype{font-weight:600;font-size:13px;}
+  .request-row .rmeta{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .req-status{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap;}
+  .req-status.Pending{background:#F5EBD2;color:#8A6412;}
+  .req-status.Approved{background:var(--green-bg);color:var(--green);}
+  .req-status.Rejected{background:var(--red-bg);color:var(--red-dark);}
+
+  /* ============ HR MODULE ============ */
+  .emp-list{display:flex;flex-direction:column;gap:10px;}
+  .emp-row{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--navy-3);border-radius:9px;padding:13px 15px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;transition:box-shadow .12s ease;}
+  .emp-row:hover{box-shadow:0 4px 14px rgba(21,31,56,.08);}
+  .emp-row .nm{font-weight:700;font-size:14px;}
+  .emp-row .meta{font-size:12.5px;color:var(--ink-soft);margin-top:3px;}
+  .emp-status{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:20px;}
+  .emp-status.Active{background:var(--green-bg);color:var(--green);}
+  .emp-status.Probation{background:#F5EBD2;color:#8A6412;}
+  .emp-status.Inactive,.emp-status.Terminated{background:#EDEDED;color:var(--ink-soft);}
+  .emp-status.On_Leave{background:var(--navy-bg);color:var(--navy-2);}
+
   /* ============ PLACEHOLDER MODULE ============ */
   .placeholder-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center;}
   .placeholder-wrap .module-icon{width:64px;height:64px;margin-bottom:22px;}
@@ -372,6 +407,8 @@
     <div id="screen-dispatch" class="hidden"></div>
     <div id="screen-driver" class="hidden"></div>
     <div id="screen-fuel" class="hidden"></div>
+    <div id="screen-profile" class="hidden"></div>
+    <div id="screen-hr" class="hidden"></div>
     <div id="screen-placeholder" class="hidden"></div>
   </main>
 </div>
@@ -527,20 +564,33 @@ document.getElementById('brand-home').onclick = goHub;
 async function loadAll(){
   state.loading = true;
   renderCurrentScreen();
-  const [bookings, drivers, vehicles, fuelRequests] = await Promise.all([
+  const [bookings, drivers, vehicles, fuelRequests, myEmployee] = await Promise.all([
     sb('bookings?select=*,drivers:assigned_driver_id(id,full_name),vehicles:assigned_vehicle_id(id,plate_number,make_model)&order=booking_date.asc,pickup_time.asc'),
     sb('drivers?select=*&order=full_name.asc'),
     sb('vehicles?select=*&order=plate_number.asc'),
     sb('fuel_requisitions?select=*&order=req_date.desc,created_at.desc'),
+    sb(`profiles?id=eq.${state.user.id}&select=employee_id`),
   ]);
   state.bookings = bookings; state.drivers = drivers; state.vehicles = vehicles; state.fuelRequests = fuelRequests;
+  state.user.employee_id = myEmployee[0]?.employee_id || null;
+
+  const extra = await Promise.all([
+    state.user.employee_id ? sb(`employees?id=eq.${state.user.employee_id}&select=*`) : Promise.resolve([]),
+    sb(`employee_requests?select=*&order=created_at.desc`),
+    can('hr.view_employees') ? sb('employees?select=*&order=full_name.asc') : Promise.resolve([]),
+  ]);
+  state.myEmployee = extra[0][0] || null;
+  state.myRequests = extra[1].filter(r=>r.requested_by===state.user.id);
+  state.pendingRequests = extra[1].filter(r=>r.status==='Pending' && r.requested_by!==state.user.id);
+  state.allEmployees = extra[2];
+
   state.loading = false;
   renderCurrentScreen();
 }
 
 /* ============ ROUTING ============ */
 function showScreen(key){
-  ['hub','dispatch','driver','fuel','placeholder'].forEach(k=>{
+  ['hub','dispatch','driver','fuel','profile','hr','placeholder'].forEach(k=>{
     document.getElementById('screen-'+k).classList.toggle('hidden', k!==key);
   });
   document.getElementById('back-slot').innerHTML = key==='hub' ? '' :
@@ -548,13 +598,15 @@ function showScreen(key){
   const back = document.getElementById('back-to-hub');
   if(back) back.onclick = goHub;
   document.getElementById('topbar-subtitle').textContent =
-    key==='hub' ? 'DASHBOARD' : key==='dispatch' ? 'BOOKING BOARD' : key==='driver' ? 'MY TRIPS' : key==='fuel' ? 'FUEL REQUISITIONS' : 'MODULE';
+    key==='hub' ? 'DASHBOARD' : key==='dispatch' ? 'BOOKING BOARD' : key==='driver' ? 'MY TRIPS' : key==='fuel' ? 'FUEL REQUISITIONS' : key==='profile' ? 'MY PROFILE' : key==='hr' ? 'DRIVERS & HR' : 'MODULE';
   window.scrollTo(0,0);
 }
 function goHub(){ state.screen='hub'; showScreen('hub'); renderCurrentScreen(); }
 function goBoard(){ state.screen='dispatch'; showScreen('dispatch'); renderCurrentScreen(); }
 function goDriver(){ state.screen='driver'; showScreen('driver'); renderCurrentScreen(); }
 function goFuel(){ state.screen='fuel'; showScreen('fuel'); renderCurrentScreen(); }
+function goProfile(){ state.screen='profile'; showScreen('profile'); renderCurrentScreen(); }
+function goHR(){ state.screen='hr'; showScreen('hr'); renderCurrentScreen(); }
 function goPlaceholder(mod){ state.screen='placeholder'; state.placeholderMod = mod; showScreen('placeholder'); renderCurrentScreen(); }
 
 function renderCurrentScreen(){
@@ -562,6 +614,8 @@ function renderCurrentScreen(){
   else if(state.screen==='dispatch') renderBoard();
   else if(state.screen==='driver') renderDriver();
   else if(state.screen==='fuel') renderFuel();
+  else if(state.screen==='profile') renderProfile();
+  else if(state.screen==='hr') renderHRModule();
   else if(state.screen==='placeholder') renderPlaceholder();
 }
 
@@ -606,9 +660,10 @@ function renderHub(){
     fleetCards += moduleCard('fleet', 'fleet', 'Fleet & Vehicles', 'Vehicle registry, registration & licensing dates, servicing schedules.', '', true, ()=>goPlaceholder('fleet'));
   }
   if(can('hr.view_employees')){
-    fleetCards += moduleCard('hr', 'hr', 'Drivers & HR', 'Staff records, licenses, certifications, attendance and scheduling.', '', true, ()=>goPlaceholder('hr'));
+    fleetCards += moduleCard('hr', 'hr', 'Drivers & HR', 'Employee records, leave approvals and HR requests.',
+      state.pendingRequests?.length>0 ? `<span class="module-stat">${state.pendingRequests.length} request${state.pendingRequests.length===1?'':'s'} pending</span>` : `<span class="module-stat ok">Nothing pending</span>`, false, goHR);
   }
-  fleetCards += moduleCard('profile', 'hr', 'My Profile', 'Your personal info, employment details and HR requests.', '', true, ()=>goPlaceholder('profile'));
+  fleetCards += moduleCard('profile', 'hr', 'My Profile', 'Your personal info, employment details and HR requests.', '', false, goProfile);
   if(can('reports.view_operations') || can('reports.view_fleet') || can('reports.view_fuel') || can('reports.view_hr')){
     insightCards += moduleCard('reports', 'reports', 'Reports & Analytics', 'Trip volume, on-time performance and fleet utilization.', '', true, ()=>goPlaceholder('reports'));
   }
@@ -1253,6 +1308,333 @@ function openFuelModal(f){
     }catch(err){
       alert('Could not save — check the Req. # isn\'t already used for this project.\n\n' + err.message);
     }
+  };
+}
+
+/* ============ MY PROFILE ============ */
+const REQUEST_TYPES = ['Document Request','Profile Correction','Employment Letter','Other'];
+const LEAVE_TYPES = ['Annual','Sick','Casual','Unpaid','Other'];
+
+function daysBetweenInclusive(start,end){
+  const a = new Date(start+'T00:00:00'), b = new Date(end+'T00:00:00');
+  return Math.max(1, Math.round((b-a)/86400000)+1);
+}
+
+function renderProfile(){
+  const el = document.getElementById('screen-profile');
+  if(state.loading){ el.innerHTML = '<div class="loading">Loading profile…</div>'; return; }
+  const emp = state.myEmployee;
+  if(!emp){ el.innerHTML = `<div class="empty-state">No employee record is linked to your account yet. Ask HR to link one.</div>`; return; }
+
+  const leaveReqs = state.myRequests.filter(r=>r.request_type==='Leave');
+  const otherReqs = state.myRequests.filter(r=>r.request_type!=='Leave');
+
+  el.innerHTML = `
+    <div class="profile-header">
+      <div class="profile-avatar">${initials(emp.full_name)}</div>
+      <div>
+        <div class="name">${emp.full_name}</div>
+        <div class="sub">${emp.employee_no} · ${emp.position||'—'} · ${emp.department||'—'}</div>
+      </div>
+      <span class="badge-status emp-status ${(emp.employment_status||'').replace(' ','_')}" style="padding:5px 12px;border-radius:20px;">${emp.employment_status}</span>
+    </div>
+
+    <div class="info-card">
+      <h3>Personal information</h3>
+      <div class="info-grid">
+        <div class="info-item"><label>Full name</label><div>${emp.full_name}</div></div>
+        <div class="info-item"><label>Preferred name</label><div>${emp.preferred_name||'—'}</div></div>
+        <div class="info-item"><label>Date of birth</label><div>${emp.date_of_birth?fmtDate(emp.date_of_birth):'—'}</div></div>
+        <div class="info-item"><label>Gender</label><div>${emp.gender||'—'}</div></div>
+        <div class="info-item"><label>Phone</label><div>${emp.phone||'—'}</div></div>
+        <div class="info-item"><label>Email</label><div>${emp.email||'—'}</div></div>
+        <div class="info-item"><label>Address</label><div>${emp.address||'—'}</div></div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <h3>Employment</h3>
+      <div class="info-grid">
+        <div class="info-item"><label>Employee ID</label><div>${emp.employee_no}</div></div>
+        <div class="info-item"><label>Department</label><div>${emp.department||'—'}</div></div>
+        <div class="info-item"><label>Position</label><div>${emp.position||'—'}</div></div>
+        <div class="info-item"><label>Supervisor</label><div>${emp.supervisor||'—'}</div></div>
+        <div class="info-item"><label>Hire date</label><div>${emp.hire_date?fmtDate(emp.hire_date):'—'}</div></div>
+        ${emp.employment_status==='Probation' ? `<div class="info-item"><label>Probation ends</label><div>${emp.probation_end_date?fmtDate(emp.probation_end_date):'—'}</div></div>` : ''}
+      </div>
+    </div>
+
+    <div class="info-card">
+      <h3>Emergency contact</h3>
+      <div class="info-grid">
+        <div class="info-item"><label>Name</label><div>${emp.emergency_contact_name||'—'}</div></div>
+        <div class="info-item"><label>Relationship</label><div>${emp.emergency_contact_relationship||'—'}</div></div>
+        <div class="info-item"><label>Phone</label><div>${emp.emergency_contact_phone||'—'}</div></div>
+        <div class="info-item"><label>Secondary phone</label><div>${emp.emergency_contact_phone_2||'—'}</div></div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <h3>Leave</h3>
+      <div class="leave-balance"><span class="n">${emp.leave_balance_days}</span><span class="l">days remaining</span></div>
+      ${can('profile.request_leave') ? `<button class="btn btn-primary btn-sm" id="btn-request-leave">Request leave</button>` : ''}
+      <div style="margin-top:14px;">
+        ${leaveReqs.length===0 ? '<p style="font-size:12.5px;color:var(--ink-soft);">No leave requests yet.</p>' :
+          leaveReqs.map(r=>`
+            <div class="request-row">
+              <div><div class="rtype">${r.leave_type} leave · ${r.days_requested} day${r.days_requested==1?'':'s'}</div>
+              <div class="rmeta">${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}${r.review_notes?' · '+r.review_notes:''}</div></div>
+              <span class="req-status ${r.status}">${r.status}</span>
+            </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="info-card">
+      <h3>Other HR requests</h3>
+      ${can('profile.request_leave') ? `<button class="btn btn-ghost btn-sm" id="btn-new-request">New request</button>` : ''}
+      <div style="margin-top:14px;">
+        ${otherReqs.length===0 ? '<p style="font-size:12.5px;color:var(--ink-soft);">No other requests yet.</p>' :
+          otherReqs.map(r=>`
+            <div class="request-row">
+              <div><div class="rtype">${r.request_type}</div>
+              <div class="rmeta">${r.reason||''}${r.review_notes?' · '+r.review_notes:''}</div></div>
+              <span class="req-status ${r.status}">${r.status}</span>
+            </div>`).join('')}
+      </div>
+    </div>
+  `;
+
+  const leaveBtn = document.getElementById('btn-request-leave');
+  if(leaveBtn) leaveBtn.onclick = openLeaveRequestModal;
+  const otherBtn = document.getElementById('btn-new-request');
+  if(otherBtn) otherBtn.onclick = openGenericRequestModal;
+}
+
+function openLeaveRequestModal(){
+  openOverlay(`
+    <h3>Request leave</h3>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin:2px 0 16px;">${state.myEmployee.leave_balance_days} days remaining. Submitted requests go to HR for approval.</p>
+    <form id="leave-form">
+      <div class="field"><label>Leave type</label>
+        <select name="leave_type" required>${LEAVE_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}</select>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Start date</label><input type="date" name="start_date" required></div>
+        <div class="field"><label>End date</label><input type="date" name="end_date" required></div>
+      </div>
+      <div class="field"><label>Reason</label><textarea name="reason" rows="2"></textarea></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancel-modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Submit request</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('cancel-modal').onclick = closeOverlay;
+  document.getElementById('leave-form').onsubmit = async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const raw = Object.fromEntries(fd.entries());
+    const days = daysBetweenInclusive(raw.start_date, raw.end_date);
+    await sb('employee_requests', {method:'POST', body:JSON.stringify({
+      employee_id: state.user.employee_id, requested_by: state.user.id, requested_by_name: state.user.full_name,
+      request_type: 'Leave', leave_type: raw.leave_type, start_date: raw.start_date, end_date: raw.end_date,
+      days_requested: days, reason: raw.reason || null,
+    })});
+    closeOverlay(); toast('Leave request submitted'); loadAll();
+  };
+}
+
+function openGenericRequestModal(){
+  openOverlay(`
+    <h3>New HR request</h3>
+    <form id="generic-request-form">
+      <div class="field"><label>Request type</label>
+        <select name="request_type" required>${REQUEST_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>Details</label><textarea name="reason" rows="3" required></textarea></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancel-modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Submit request</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('cancel-modal').onclick = closeOverlay;
+  document.getElementById('generic-request-form').onsubmit = async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const raw = Object.fromEntries(fd.entries());
+    await sb('employee_requests', {method:'POST', body:JSON.stringify({
+      employee_id: state.user.employee_id, requested_by: state.user.id, requested_by_name: state.user.full_name,
+      request_type: raw.request_type, reason: raw.reason,
+    })});
+    closeOverlay(); toast('Request submitted'); loadAll();
+  };
+}
+
+/* ============ HR MODULE ============ */
+const EMPLOYMENT_STATUSES = ['Active','Probation','On Leave','Inactive','Terminated'];
+
+function renderHRModule(){
+  const el = document.getElementById('screen-hr');
+  if(state.loading){ el.innerHTML = '<div class="loading">Loading HR…</div>'; return; }
+
+  const activeCt = state.allEmployees.filter(e=>e.employment_status==='Active').length;
+
+  el.innerHTML = `
+    <div class="stats">
+      <div class="stat"><div class="n">${state.allEmployees.length}</div><div class="l">Total employees</div></div>
+      <div class="stat"><div class="n">${activeCt}</div><div class="l">Active</div></div>
+      <div class="stat ${state.pendingRequests.length>0?'alert':''}"><div class="n">${state.pendingRequests.length}</div><div class="l">Pending requests</div></div>
+    </div>
+
+    ${state.pendingRequests.length>0 ? `
+      <div class="section-head"><h2>Pending requests</h2></div>
+      <div class="fuel-list" id="pending-requests"></div>
+    ` : ''}
+
+    <div class="section-head"><h2>Employees</h2>${can('hr.create_employees') ? `<button class="btn btn-primary" id="btn-new-employee">+ New employee</button>` : ''}</div>
+    <div class="emp-list" id="emp-list"></div>
+  `;
+
+  if(state.pendingRequests.length>0){
+    const list = document.getElementById('pending-requests');
+    state.pendingRequests.forEach(r=>{
+      const emp = state.allEmployees.find(e=>e.id===r.employee_id);
+      const row = document.createElement('div');
+      row.className = 'fuel-card awaiting';
+      row.innerHTML = `
+        <div class="fuel-top">
+          <div><span class="veh">${emp?emp.full_name:r.requested_by_name}</span> <span class="fuel-id">${r.request_type}${r.leave_type?' · '+r.leave_type:''}</span></div>
+          <div style="display:flex;gap:6px;">
+            ${can('hr.manage_leave') ? `<button class="btn btn-primary btn-sm" data-approve="${r.id}">Approve</button><button class="btn btn-ghost btn-sm" data-reject="${r.id}">Reject</button>` : ''}
+          </div>
+        </div>
+        <div class="fuel-meta">
+          ${r.start_date ? `<span><b>${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}</b> (${r.days_requested} days)</span>` : ''}
+          ${r.reason ? `<span>${r.reason}</span>` : ''}
+        </div>`;
+      list.appendChild(row);
+    });
+    list.querySelectorAll('[data-approve]').forEach(btn=>{
+      btn.onclick = ()=>reviewRequest(btn.dataset.approve, 'Approved');
+    });
+    list.querySelectorAll('[data-reject]').forEach(btn=>{
+      btn.onclick = ()=>reviewRequest(btn.dataset.reject, 'Rejected');
+    });
+  }
+
+  const empList = document.getElementById('emp-list');
+  state.allEmployees.forEach(e=>{
+    const row = document.createElement('div');
+    row.className = 'emp-row';
+    row.innerHTML = `
+      <div><div class="nm">${e.full_name}</div><div class="meta">${e.employee_no} · ${e.position||'—'} · ${e.department||'—'}</div></div>
+      <span class="emp-status ${(e.employment_status||'').replace(' ','_')}">${e.employment_status}</span>`;
+    if(can('hr.edit_employees')||can('hr.create_employees')) row.onclick = ()=>openEmployeeModal(e);
+    else row.style.cursor = 'default';
+    empList.appendChild(row);
+  });
+  const newEmpBtn = document.getElementById('btn-new-employee');
+  if(newEmpBtn) newEmpBtn.onclick = ()=>openEmployeeModal(null);
+}
+
+async function reviewRequest(id, status){
+  const notes = status==='Rejected' ? (prompt('Optional note for the employee:') || null) : null;
+  await sb(`employee_requests?id=eq.${id}`, {method:'PATCH', body:JSON.stringify({
+    status, reviewed_by: state.user.id, reviewed_by_name: state.user.full_name,
+    reviewed_at: new Date().toISOString(), review_notes: notes,
+  })});
+  if(status==='Approved'){
+    const req = state.pendingRequests.find(r=>r.id===id);
+    if(req && req.request_type==='Leave'){
+      const emp = state.allEmployees.find(e=>e.id===req.employee_id);
+      if(emp){
+        const newBalance = Math.max(0, parseFloat(emp.leave_balance_days) - parseFloat(req.days_requested));
+        await sb(`employees?id=eq.${emp.id}`, {method:'PATCH', body:JSON.stringify({leave_balance_days:newBalance})});
+      }
+    }
+  }
+  toast(`Request ${status.toLowerCase()}`); loadAll();
+}
+
+function openEmployeeModal(emp){
+  const isEdit = !!emp;
+  const d = emp || {
+    full_name:'', preferred_name:'', date_of_birth:'', gender:'', phone:'', email:'', address:'',
+    department:'', position:'', supervisor:'', hire_date:'', employment_status:'Active', probation_end_date:'',
+    emergency_contact_name:'', emergency_contact_relationship:'', emergency_contact_phone:'', emergency_contact_phone_2:'',
+    leave_balance_days: 14, notes:'',
+  };
+  openOverlay(`
+    <h3>${isEdit? emp.full_name : 'New employee'}</h3>
+    <form id="employee-form">
+      <div class="form-section">
+        <h4>Personal</h4>
+        <div class="field-row">
+          <div class="field"><label>Full name *</label><input name="full_name" required value="${t_esc(d.full_name)}"></div>
+          <div class="field"><label>Preferred name</label><input name="preferred_name" value="${t_esc(d.preferred_name||'')}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Date of birth</label><input type="date" name="date_of_birth" value="${d.date_of_birth||''}"></div>
+          <div class="field"><label>Gender</label><input name="gender" value="${t_esc(d.gender||'')}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Phone</label><input name="phone" value="${t_esc(d.phone||'')}"></div>
+          <div class="field"><label>Email</label><input type="email" name="email" value="${t_esc(d.email||'')}"></div>
+        </div>
+        <div class="field"><label>Address</label><input name="address" value="${t_esc(d.address||'')}"></div>
+      </div>
+      <div class="form-section">
+        <h4>Employment</h4>
+        <div class="field-row">
+          <div class="field"><label>Department</label><input name="department" value="${t_esc(d.department||'')}"></div>
+          <div class="field"><label>Position</label><input name="position" value="${t_esc(d.position||'')}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Supervisor</label><input name="supervisor" value="${t_esc(d.supervisor||'')}"></div>
+          <div class="field"><label>Hire date</label><input type="date" name="hire_date" value="${d.hire_date||''}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Employment status</label>
+            <select name="employment_status">${EMPLOYMENT_STATUSES.map(s=>`<option value="${s}" ${d.employment_status===s?'selected':''}>${s}</option>`).join('')}</select>
+          </div>
+          <div class="field"><label>Probation end date</label><input type="date" name="probation_end_date" value="${d.probation_end_date||''}"></div>
+        </div>
+        <div class="field"><label>Leave balance (days)</label><input type="number" name="leave_balance_days" value="${d.leave_balance_days}"></div>
+      </div>
+      <div class="form-section">
+        <h4>Emergency contact</h4>
+        <div class="field-row">
+          <div class="field"><label>Name</label><input name="emergency_contact_name" value="${t_esc(d.emergency_contact_name||'')}"></div>
+          <div class="field"><label>Relationship</label><input name="emergency_contact_relationship" value="${t_esc(d.emergency_contact_relationship||'')}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Phone</label><input name="emergency_contact_phone" value="${t_esc(d.emergency_contact_phone||'')}"></div>
+          <div class="field"><label>Secondary phone</label><input name="emergency_contact_phone_2" value="${t_esc(d.emergency_contact_phone_2||'')}"></div>
+        </div>
+      </div>
+      <div class="field"><label>Notes</label><textarea name="notes" rows="2">${t_esc(d.notes||'')}</textarea></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancel-modal">Close</button>
+        <button type="submit" class="btn btn-primary">Save employee</button>
+      </div>
+    </form>
+  `, true);
+  document.getElementById('cancel-modal').onclick = closeOverlay;
+  document.getElementById('employee-form').onsubmit = async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const raw = Object.fromEntries(fd.entries());
+    const body = { ...raw, leave_balance_days: parseFloat(raw.leave_balance_days)||0, updated_at: new Date().toISOString() };
+    Object.keys(body).forEach(k=>{ if(body[k]==='') body[k] = null; });
+    if(isEdit){
+      await sb(`employees?id=eq.${emp.id}`, {method:'PATCH', body:JSON.stringify(body)});
+      toast('Employee updated');
+    } else {
+      await sb('employees', {method:'POST', body:JSON.stringify(body)});
+      toast('Employee created');
+    }
+    closeOverlay(); loadAll();
   };
 }
 </script>
