@@ -67,6 +67,7 @@
     width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:#fff;
   }
   .field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--navy-3);outline-offset:1px;}
+  .field input.time-input{font-family:var(--mono);letter-spacing:1px;max-width:110px;}
   .login-form .btn-primary{width:100%;padding:12px;font-size:14.5px;margin-top:6px;}
   .login-error{background:var(--red-bg);color:var(--red-dark);font-size:12.5px;padding:10px 12px;border-radius:7px;margin-bottom:14px;display:none;}
   .login-error.show{display:block;}
@@ -105,7 +106,7 @@
   .hub-head p{font-size:14px;color:var(--ink-soft);margin:0;}
   .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
   .module-card{
-    background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;cursor:pointer;
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 22px 30px;cursor:pointer;
     transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;position:relative;overflow:hidden;
   }
   .module-card:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(21,31,56,.12);border-color:var(--navy-3);}
@@ -113,11 +114,24 @@
   .module-card.disabled:hover{transform:none;box-shadow:none;border-color:var(--line);}
   .module-icon{width:46px;height:46px;border-radius:11px;background:var(--navy-bg);display:flex;align-items:center;justify-content:center;margin-bottom:16px;color:var(--navy);}
   .module-card.disabled .module-icon{background:var(--slate-bg);color:var(--ink-soft);}
+  .module-icon.icon-dispatch,.section-head-icon.icon-dispatch{background:var(--navy-bg);color:var(--navy);}
+  .module-icon.icon-fuel,.section-head-icon.icon-fuel{background:#FBF0DA;color:#A9740F;}
+  .module-icon.icon-fleet,.section-head-icon.icon-fleet{background:#DCEAF7;color:#1D6FA5;}
+  .module-icon.icon-hr,.section-head-icon.icon-hr{background:#DDF0E6;color:#1E7A52;}
+  .module-icon.icon-reports,.section-head-icon.icon-reports{background:#EBE1F5;color:#6B3FA0;}
+  .module-icon.icon-mytrips,.section-head-icon.icon-mytrips{background:var(--navy-bg);color:var(--navy);}
   .module-card h3{font-family:var(--head);font-size:16.5px;margin:0 0 6px;color:var(--navy);text-transform:uppercase;letter-spacing:.2px;}
   .module-card p{font-size:12.8px;color:var(--ink-soft);line-height:1.5;margin:0 0 14px;min-height:36px;}
   .module-stat{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--red);}
   .module-stat.ok{color:var(--green);}
   .soon-tag{position:absolute;top:16px;right:16px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;background:var(--slate-bg);color:var(--ink-soft);padding:4px 9px;border-radius:20px;}
+  .card-arrow{position:absolute;bottom:20px;right:20px;color:var(--line);transition:transform .15s ease,color .15s ease;}
+  .module-card:not(.disabled):hover .card-arrow{transform:translateX(3px);color:var(--red);}
+  .hub-section{margin:30px 0 13px;}
+  .hub-section h2{font-family:var(--head);font-size:13px;margin:0;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft);}
+  .hub-section:first-of-type{margin-top:0;}
+  .section-head-icon{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .section-head .title-group{display:flex;align-items:center;gap:11px;}
 
   /* ============ STAT STRIP ============ */
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:26px;}
@@ -137,6 +151,14 @@
   .btn-sm{padding:7px 12px;font-size:12.5px;border-radius:6px;}
   .btn:active{transform:scale(.97);}
   .btn:disabled{opacity:.5;cursor:not-allowed;}
+
+  /* ============ SEARCH BAR ============ */
+  .search-bar{position:relative;display:flex;align-items:center;margin-bottom:16px;}
+  .search-bar svg{position:absolute;left:13px;color:var(--ink-soft);pointer-events:none;}
+  .search-bar input{width:100%;padding:11px 40px 11px 38px;border:1px solid var(--line);border-radius:9px;font-size:13.5px;background:var(--panel);font-family:var(--sans);}
+  .search-bar input:focus{outline:2px solid var(--navy-3);outline-offset:1px;}
+  .search-clear{position:absolute;right:10px;background:var(--slate-bg);border:none;color:var(--ink-soft);width:20px;height:20px;border-radius:50%;font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .search-clear:hover{background:var(--line);color:var(--ink);}
 
   /* ============ BOOKING BOARD ============ */
   .board-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
@@ -380,7 +402,7 @@ async function sb(path, opts={}){
 }
 
 const PAYMENT_STATUSES = ["Paid in full","Part payment","Invoiced","Payment pending"];
-const TRANSPORT_TYPES = ["SUV","Minibus","Coaster Bus","Bus","Van","Other"];
+const TRANSPORT_TYPES = ["Car","SUV","Minibus","Coaster Bus","Bus","Van","Other"];
 const LOCATIONS = ["Cheddi Jagan International Airport","Ogle Airport","Georgetown","Mahaica","Mahaicony","Rosignol","New Amsterdam","Canje","Rosehall","Corriverton","Moleson Creek","West Bank Demerara","Wales","Leonora","Parika"];
 const DEFAULT_EMERGENCY_CONTACT = "Call:+592 231 6873 / WhatsApp & Calls +592 624 1147";
 const PROJECTS = ["KRBS","SBM"];
@@ -388,6 +410,30 @@ const FUEL_VEHICLE_TYPES = ["Car","Bus","C.Bus","Truck","SUV","Other"];
 const FUEL_TYPES = ["Diesel","Gas"];
 function payClass(status){ return 'pay-' + String(status).replace(/ /g,'_'); }
 function amountIsRecorded(v){ return v!=null && v!=='' && !isNaN(parseFloat(v)) && isFinite(v); }
+
+/* ---- Smart 24-hour time entry: type "13" or "1330" and it formats itself ---- */
+function timeInputHtml(name, value, required){
+  return `<input type="text" inputmode="numeric" name="${name}" class="time-input" placeholder="HH:MM" maxlength="5" ${required?'required':''} value="${t_esc(value||'')}">`;
+}
+function wireTimeInputs(root){
+  root.querySelectorAll('.time-input').forEach(el=>{
+    el.addEventListener('input', ()=>{
+      let digits = el.value.replace(/\D/g,'').slice(0,4);
+      if(digits.length<=2){ el.value = digits; }
+      else { el.value = digits.slice(0,2) + ':' + digits.slice(2); }
+    });
+    el.addEventListener('blur', ()=>{
+      let digits = el.value.replace(/\D/g,'').slice(0,4);
+      if(digits.length===0) return;
+      let hh, mm;
+      if(digits.length<=2){ hh = digits.padStart(2,'0'); mm = '00'; }
+      else { hh = digits.slice(0,2); mm = digits.slice(2).padEnd(2,'0'); }
+      let hhNum = Math.min(parseInt(hh,10)||0, 23);
+      let mmNum = Math.min(parseInt(mm,10)||0, 59);
+      el.value = String(hhNum).padStart(2,'0') + ':' + String(mmNum).padStart(2,'0');
+    });
+  });
+}
 
 const ICONS = {
   dispatch:`<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="6" r="2.4" stroke="currentColor" stroke-width="1.8"/><circle cx="19" cy="18" r="2.4" stroke="currentColor" stroke-width="1.8"/><path d="M7 7 L17 17" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2.5 3" stroke-linecap="round"/><path d="M12 4 L14 4 L14 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
@@ -500,33 +546,47 @@ function renderHub(){
   const el = document.getElementById('screen-hub');
   if(state.loading){ el.innerHTML = '<div class="loading">Loading dashboard…</div>'; return; }
   const isAdmin = state.user.role === 'admin';
-  const unassignedCt = state.bookings.filter(b=>b.active && !b.assigned_driver_id).length;
+  const todayStr = new Date().toISOString().slice(0,10);
+  const activeBookings = state.bookings.filter(b=>b.active);
+  const unassignedCt = activeBookings.filter(b=>!b.assigned_driver_id).length;
+  const todayCt = activeBookings.filter(b=>b.booking_date===todayStr).length;
   const myCt = state.bookings.filter(b=> b.assigned_driver_id===state.user.driver_id && b.active).length;
   const pendingFuelCt = state.fuelRequests.filter(f=>!amountIsRecorded(f.guyoil_amount)).length;
 
-  let cards = '';
+  let snapshot = '';
+  let opsCards = '', fleetCards = '', insightCards = '';
   if(isAdmin){
-    cards += moduleCard('dispatch', 'dispatch', 'Booking Board', 'Confirmed booking desk — create, edit and dispatch reservations.',
+    snapshot = `
+      <div class="stats">
+        <div class="stat"><div class="n">${activeBookings.length}</div><div class="l">Active bookings</div></div>
+        <div class="stat"><div class="n">${todayCt}</div><div class="l">Bookings today</div></div>
+        <div class="stat ${unassignedCt>0?'alert':''}"><div class="n">${unassignedCt}</div><div class="l">Unassigned bookings</div></div>
+        <div class="stat ${pendingFuelCt>0?'alert':''}"><div class="n">${pendingFuelCt}</div><div class="l">Fuel awaiting amount</div></div>
+      </div>`;
+    opsCards += moduleCard('dispatch', 'dispatch', 'Booking Board', 'Confirmed booking desk — create, edit and dispatch reservations.',
       unassignedCt>0 ? `<span class="module-stat">${unassignedCt} unassigned</span>` : `<span class="module-stat ok">All bookings assigned</span>`, false, goBoard);
-    cards += moduleCard('fuel', 'fuel', 'Fuel Requisitions', 'Request fuel per vehicle, approve requests, track consumption.',
-      pendingFuelCt>0 ? `<span class="module-stat">${pendingFuelCt} awaiting approval</span>` : `<span class="module-stat ok">Nothing pending</span>`, false, goFuel);
-    Object.entries(PLACEHOLDER_MODULES).forEach(([key,m])=>{
-      cards += moduleCard(key, m.icon, m.title, m.desc, '', true, ()=>goPlaceholder(key));
-    });
+    opsCards += moduleCard('fuel', 'fuel', 'Fuel Requisitions', 'Voucher log, KRBS &amp; SBM kept separate, receipt scanning.',
+      pendingFuelCt>0 ? `<span class="module-stat">${pendingFuelCt} awaiting amount</span>` : `<span class="module-stat ok">Nothing pending</span>`, false, goFuel);
+    fleetCards += moduleCard('fleet', 'fleet', 'Fleet & Vehicles', 'Vehicle registry, registration & licensing dates, servicing schedules.', '', true, ()=>goPlaceholder('fleet'));
+    fleetCards += moduleCard('hr', 'hr', 'Drivers & HR', 'Staff records, licenses, certifications, attendance and scheduling.', '', true, ()=>goPlaceholder('hr'));
+    insightCards += moduleCard('reports', 'reports', 'Reports & Analytics', 'Trip volume, on-time performance and fleet utilization.', '', true, ()=>goPlaceholder('reports'));
   } else {
-    cards += moduleCard('driver', 'mytrips', 'My Trips', 'View the bookings dispatch has assigned to you.',
+    opsCards += moduleCard('driver', 'mytrips', 'My Trips', 'View the bookings dispatch has assigned to you.',
       myCt>0 ? `<span class="module-stat">${myCt} active booking${myCt===1?'':'s'}</span>` : `<span class="module-stat ok">No active bookings</span>`, false, goDriver);
-    cards += moduleCard('hr', 'hr', 'My Profile', 'License, certifications and driving history.', '', true, ()=>goPlaceholder('hr'));
+    fleetCards += moduleCard('hr', 'hr', 'My Profile', 'License, certifications and driving history.', '', true, ()=>goPlaceholder('hr'));
   }
 
   el.innerHTML = `
     <div class="hub-head">
       <h1>Welcome back, ${state.user.full_name.split(' ')[0]}</h1>
-      <p>${isAdmin ? 'Select a module to get started.' : "Here's your operations dashboard."}</p>
+      <p>${isAdmin ? "Here's what's happening across operations right now." : "Here's your operations dashboard."}</p>
     </div>
-    <div class="card-grid" id="card-grid"></div>
+    ${snapshot}
+    <div class="hub-section"><h2>Operations</h2></div>
+    <div class="card-grid">${opsCards}</div>
+    ${fleetCards ? `<div class="hub-section"><h2>${isAdmin?'Fleet &amp; People':'Profile'}</h2></div><div class="card-grid">${fleetCards}</div>` : ''}
+    ${insightCards ? `<div class="hub-section"><h2>Insights</h2></div><div class="card-grid">${insightCards}</div>` : ''}
   `;
-  document.getElementById('card-grid').innerHTML = cards;
   document.querySelectorAll('.module-card').forEach(c=>{
     c.onclick = window['__modclick_'+c.dataset.key];
   });
@@ -536,10 +596,11 @@ function moduleCard(key, icon, title, desc, statHtml, disabled, onClick){
   return `
     <div class="module-card ${disabled?'disabled':''}" data-key="${key}">
       ${disabled ? '<span class="soon-tag">Coming soon</span>' : ''}
-      <div class="module-icon">${ICONS[icon]}</div>
+      <div class="module-icon icon-${icon}">${ICONS[icon]}</div>
       <h3>${title}</h3>
       <p>${desc}</p>
       ${statHtml}
+      ${!disabled ? `<svg class="card-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>` : ''}
     </div>
   `;
 }
@@ -559,6 +620,19 @@ function renderPlaceholder(){
 }
 
 /* ============ BOOKING BOARD ============ */
+state.bookingSearch = state.bookingSearch || '';
+
+function bookingMatchesSearch(b, q){
+  if(!q) return true;
+  const hay = [
+    b.booking_id, b.customer_name, b.pickup_location, b.dropoff_location,
+    b.passenger_names, b.transportation_type, b.status_payment, b.dispatch_notes,
+    b.flight_number, b.booked_by, b.pickup_time, b.emergency_contact,
+    b.drivers?.full_name, b.vehicles?.plate_number,
+  ].filter(Boolean).join(' ').toLowerCase();
+  return hay.includes(q.toLowerCase());
+}
+
 function renderBoard(){
   const el = document.getElementById('screen-dispatch');
   if(state.loading){ el.innerHTML = '<div class="loading">Loading booking board…</div>'; return; }
@@ -576,7 +650,12 @@ function renderBoard(){
       <div class="stat ${unassignedDriver>0?'alert':''}"><div class="n">${unassignedDriver}</div><div class="l">Unassigned driver</div></div>
       <div class="stat ${unassignedVehicle>0?'alert':''}"><div class="n">${unassignedVehicle}</div><div class="l">Unassigned vehicle</div></div>
     </div>
-    <div class="section-head"><h2>Booking board</h2><button class="btn btn-primary" id="btn-new-booking">+ New booking</button></div>
+    <div class="section-head"><div class="title-group"><span class="section-head-icon icon-dispatch">${ICONS.dispatch}</span><h2>Booking board</h2></div><button class="btn btn-primary" id="btn-new-booking">+ New booking</button></div>
+    <div class="search-bar">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21 L16.5 16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input type="text" id="booking-search" placeholder="Search any booking — customer, location, driver, vehicle, booking ID, flight #…" value="${t_esc(state.bookingSearch)}">
+      <button class="search-clear ${state.bookingSearch?'':'hidden'}" id="clear-search" title="Clear">&times;</button>
+    </div>
     <div class="day-list" id="day-list"></div>
     <div class="section-head"><h2>Setup lists</h2></div>
     <div class="rosters">
@@ -585,36 +664,53 @@ function renderBoard(){
     </div>
   `;
   document.getElementById('btn-new-booking').onclick = ()=>openBookingModal(null);
+  const searchInput = document.getElementById('booking-search');
+  searchInput.oninput = (e)=>{
+    state.bookingSearch = e.target.value;
+    document.getElementById('clear-search').classList.toggle('hidden', !state.bookingSearch);
+    renderDayList();
+  };
+  document.getElementById('clear-search').onclick = ()=>{
+    state.bookingSearch=''; searchInput.value=''; document.getElementById('clear-search').classList.add('hidden'); renderDayList(); searchInput.focus();
+  };
 
-  // Group bookings by date, chronological
+  renderDayList();
+  renderRosterLists();
+}
+
+function renderDayList(){
+  const todayStr = new Date().toISOString().slice(0,10);
+  const q = state.bookingSearch.trim();
+  const filtered = q ? state.bookings.filter(b=>bookingMatchesSearch(b,q)) : state.bookings;
   const byDate = {};
-  state.bookings.forEach(b=>{ (byDate[b.booking_date] = byDate[b.booking_date]||[]).push(b); });
+  filtered.forEach(b=>{ (byDate[b.booking_date] = byDate[b.booking_date]||[]).push(b); });
   const dates = Object.keys(byDate).sort();
   const dayList = document.getElementById('day-list');
   if(dates.length===0){
-    dayList.innerHTML = `<div class="empty-state">No bookings yet. Create the first one with "+ New booking".</div>`;
-  } else {
-    dates.forEach(d=>{
-      const dt = new Date(d+'T00:00:00');
-      const row = document.createElement('div');
-      row.className = 'day-row' + (d===todayStr ? ' today' : '');
-      const bookingsHtml = byDate[d]
-        .sort((a,b)=> (a.pickup_time||'').localeCompare(b.pickup_time||''))
-        .map(b=>bookingCardHtml(b)).join('');
-      row.innerHTML = `
-        <div class="day-date"><b>${dt.getDate()}</b><span>${dt.toLocaleDateString('en-US',{month:'short',weekday:'short'})}</span></div>
-        <div class="day-bookings">${bookingsHtml}</div>`;
-      dayList.appendChild(row);
-      row.querySelectorAll('.bk-card').forEach(card=>{
-        card.onclick = ()=>{
-          const b = state.bookings.find(x=>x.id===card.dataset.id);
-          if(b) openBookingModal(b);
-        };
-      });
-    });
+    dayList.innerHTML = q
+      ? `<div class="empty-state">No bookings match "${t_esc(q)}".</div>`
+      : `<div class="empty-state">No bookings yet. Create the first one with "+ New booking".</div>`;
+    return;
   }
-
-  renderRosterLists();
+  dayList.innerHTML = '';
+  dates.forEach(d=>{
+    const dt = new Date(d+'T00:00:00');
+    const row = document.createElement('div');
+    row.className = 'day-row' + (d===todayStr ? ' today' : '');
+    const bookingsHtml = byDate[d]
+      .sort((a,b)=> (a.pickup_time||'').localeCompare(b.pickup_time||''))
+      .map(b=>bookingCardHtml(b)).join('');
+    row.innerHTML = `
+      <div class="day-date"><b>${dt.getDate()}</b><span>${dt.toLocaleDateString('en-US',{month:'short',weekday:'short'})}</span></div>
+      <div class="day-bookings">${bookingsHtml}</div>`;
+    dayList.appendChild(row);
+    row.querySelectorAll('.bk-card').forEach(card=>{
+      card.onclick = ()=>{
+        const b = state.bookings.find(x=>x.id===card.dataset.id);
+        if(b) openBookingModal(b);
+      };
+    });
+  });
 }
 
 function bookingCardHtml(b){
@@ -725,7 +821,7 @@ function openBookingModal(booking){
         <h4>Trip &amp; service</h4>
         <div class="field-row">
           <div class="field"><label>Customer name *</label><input name="customer_name" required value="${t_esc(b.customer_name)}"></div>
-          <div class="field"><label>Pick up time *</label><input name="pickup_time" required placeholder="e.g. 17:00 hrs" value="${t_esc(b.pickup_time)}"></div>
+          <div class="field"><label>Pick up time * <span style="font-weight:400;color:var(--ink-soft);">(24-hr)</span></label>${timeInputHtml('pickup_time', b.pickup_time, true)}</div>
         </div>
         <div class="field-row">
           <div class="field"><label>Passenger load count *</label><input type="number" min="1" name="passenger_load_count" required value="${b.passenger_load_count||''}"></div>
@@ -775,6 +871,7 @@ function openBookingModal(booking){
   `, true);
 
   const form = document.getElementById('booking-form');
+  wireTimeInputs(form);
   const preview = document.getElementById('notes-preview');
   function currentFormData(){
     const fd = new FormData(form);
@@ -936,7 +1033,7 @@ function renderFuel(){
       <div class="stat ${noScanCt>0?'alert':''}"><div class="n">${noScanCt}</div><div class="l">No receipt scanned</div></div>
       <div class="stat"><div class="n">$${monthTotal.toLocaleString()}</div><div class="l">Recorded this month (GYD)</div></div>
     </div>
-    <div class="section-head"><h2>${state.fuelProject} fuel log</h2><button class="btn btn-primary" id="btn-new-fuel">+ New requisition</button></div>
+    <div class="section-head"><div class="title-group"><span class="section-head-icon icon-fuel">${ICONS.fuel}</span><h2>${state.fuelProject} fuel log</h2></div><button class="btn btn-primary" id="btn-new-fuel">+ New requisition</button></div>
     <div class="fuel-list" id="fuel-list"></div>
   `;
 
