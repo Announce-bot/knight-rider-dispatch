@@ -188,6 +188,8 @@
   .pay-Invoiced{background:#EEE6D8;color:#8A6412;}
   .pay-Payment_pending{background:var(--red-bg);color:var(--red-dark);}
   .unassigned-tag{font-size:10.5px;font-weight:600;color:var(--red);}
+  .round-trip-tag{font-size:10px;font-weight:600;color:var(--navy-2);background:var(--navy-bg);padding:2px 7px;border-radius:20px;vertical-align:middle;}
+  .balance-due{color:var(--red);font-weight:600;}
 
   /* ============ SETUP LISTS (drivers/vehicles) ============ */
   .rosters{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px;}
@@ -457,11 +459,26 @@ const PAYMENT_STATUSES = ["Paid in full","Part payment","Invoiced","Payment pend
 const TRANSPORT_TYPES = ["Car","SUV","Minibus","Coaster Bus","Bus","Van","Other"];
 const LOCATIONS = ["Cheddi Jagan International Airport","Ogle Airport","Georgetown","Mahaica","Mahaicony","Rosignol","New Amsterdam","Canje","Rosehall","Corriverton","Moleson Creek","West Bank Demerara","Wales","Leonora","Parika"];
 const DEFAULT_EMERGENCY_CONTACT = "Call:+592 231 6873 / WhatsApp & Calls +592 624 1147";
+const BOOKING_SOURCES = ["Phone","WhatsApp","Email","Walk-in","Repeat Customer","Website","Other"];
+const FUEL_PAYMENT_METHODS = ["Cash Advance","Company Account","Card","Other"];
+function fmtMoney(n){ return n==null ? '—' : '$'+Number(n).toLocaleString(undefined,{minimumFractionDigits:0}); }
 const PROJECTS = ["KRBS","SBM"];
 const FUEL_VEHICLE_TYPES = ["Car","Bus","C.Bus","Truck","SUV","Other"];
 const FUEL_TYPES = ["Diesel","Gas"];
 function payClass(status){ return 'pay-' + String(status).replace(/ /g,'_'); }
 function amountIsRecorded(v){ return v!=null && v!=='' && !isNaN(parseFloat(v)) && isFinite(v); }
+function consumptionPreview(d){
+  const prev = parseFloat(d.previous_odometer), curr = parseFloat(d.current_odometer), liters = parseFloat(d.liters_received);
+  if(isNaN(prev) || isNaN(curr) || curr<=prev){
+    return 'Enter previous and current odometer readings to calculate distance and fuel efficiency.';
+  }
+  const distance = curr - prev;
+  if(isNaN(liters) || liters<=0){
+    return `Distance travelled: ${distance.toLocaleString()} km. Add liters received to calculate efficiency.`;
+  }
+  const kmPerL = distance/liters;
+  return `Distance travelled: ${distance.toLocaleString()} km · Fuel efficiency: ${kmPerL.toFixed(1)} km/L`;
+}
 
 /* ---- Smart 24-hour time entry: type "13" or "1330" and it formats itself ---- */
 function timeInputHtml(name, value, required){
@@ -531,7 +548,7 @@ document.getElementById('login-form').addEventListener('submit', async (e)=>{
     state.permissions = new Set(rolePerms.map(rp=>rp.permissions.key));
     state.user = {
       id: profile.id, full_name: profile.full_name, email: profile.email,
-      role: profile.roles?.name || '—', driver_id: profile.driver_id,
+      role: profile.roles?.name || '—', driver_id: profile.driver_id, last_login: profile.last_login,
     };
 
     sb(`profiles?id=eq.${profile.id}`, {method:'PATCH', body:JSON.stringify({last_login:new Date().toISOString()})}).catch(()=>{});
@@ -578,11 +595,17 @@ async function loadAll(){
     state.user.employee_id ? sb(`employees?id=eq.${state.user.employee_id}&select=*`) : Promise.resolve([]),
     sb(`employee_requests?select=*&order=created_at.desc`),
     can('hr.view_employees') ? sb('employees?select=*&order=full_name.asc') : Promise.resolve([]),
+    (can('operations.view_customers')||can('operations.view_bookings')) ? sb('customers?select=*&order=name.asc') : Promise.resolve([]),
+    state.user.employee_id ? sb(`employee_documents?employee_id=eq.${state.user.employee_id}&select=*&order=expiry_date.asc.nullslast`) : Promise.resolve([]),
+    state.user.employee_id ? sb(`attendance?employee_id=eq.${state.user.employee_id}&select=*&order=attendance_date.desc&limit=20`) : Promise.resolve([]),
   ]);
   state.myEmployee = extra[0][0] || null;
   state.myRequests = extra[1].filter(r=>r.requested_by===state.user.id);
   state.pendingRequests = extra[1].filter(r=>r.status==='Pending' && r.requested_by!==state.user.id);
+  state.customers = extra[3];
   state.allEmployees = extra[2];
+  state.myDocuments = extra[4];
+  state.myAttendance = extra[5];
 
   state.loading = false;
   renderCurrentScreen();
@@ -721,6 +744,7 @@ function bookingMatchesSearch(b, q){
     b.booking_id, b.customer_name, b.pickup_location, b.dropoff_location,
     b.passenger_names, b.transportation_type, b.status_payment, b.dispatch_notes,
     b.flight_number, b.booked_by, b.pickup_time, b.emergency_contact,
+    b.booking_source, b.special_requirements, b.internal_notes,
     b.drivers?.full_name, b.vehicles?.plate_number,
   ].filter(Boolean).join(' ').toLowerCase();
   return hay.includes(q.toLowerCase());
@@ -750,6 +774,10 @@ function renderBoard(){
       <button class="search-clear ${state.bookingSearch?'':'hidden'}" id="clear-search" title="Clear">&times;</button>
     </div>
     <div class="day-list" id="day-list"></div>
+    ${(can('operations.view_customers')||can('operations.view_bookings')) ? `
+      <div class="section-head"><h2>Customers</h2></div>
+      <div class="roster" id="customer-directory" style="margin-bottom:22px;"></div>
+    ` : ''}
     <div class="section-head"><h2>Setup lists</h2></div>
     <div class="rosters">
       <div class="roster" id="roster-drivers"></div>
@@ -770,6 +798,60 @@ function renderBoard(){
 
   renderDayList();
   renderRosterLists();
+  renderCustomerDirectory();
+}
+
+function renderCustomerDirectory(){
+  const wrap = document.getElementById('customer-directory');
+  if(!wrap) return;
+  const canWrite = can('operations.create_bookings') || can('operations.edit_bookings');
+  wrap.innerHTML = `<div class="roster-head"><h3>Customer directory (${state.customers.length})</h3></div>` +
+    (state.customers.length===0 ? `<p style="font-size:12.5px;color:var(--ink-soft);">No customers yet — they're added automatically from bookings, or add one directly.</p>` :
+    state.customers.map(c=>`
+      <div class="roster-row" data-cust="${c.id}" style="${canWrite?'cursor:pointer;':''}">
+        <div><div class="name">${c.name}</div><div class="sub">${[c.company,c.phone,c.email].filter(Boolean).join(' · ')||'No contact info yet'}</div></div>
+      </div>`).join('')) +
+    (canWrite ? `<div class="roster-add"><input type="text" id="new-customer-name" placeholder="Customer or company name"><button class="btn btn-ghost btn-sm" id="add-customer">Add</button></div>` : '');
+  if(canWrite){
+    wrap.querySelectorAll('[data-cust]').forEach(row=>{
+      row.onclick = ()=>openCustomerModal(state.customers.find(c=>c.id===row.dataset.cust));
+    });
+    document.getElementById('add-customer').onclick = async ()=>{
+      const input = document.getElementById('new-customer-name');
+      if(!input.value.trim()) return;
+      await sb('customers', {method:'POST', body:JSON.stringify({name: input.value.trim()})});
+      toast('Customer added'); loadAll();
+    };
+  }
+}
+
+function openCustomerModal(c){
+  openOverlay(`
+    <h3>${c.name}</h3>
+    <form id="customer-form">
+      <div class="field"><label>Name</label><input name="name" required value="${t_esc(c.name)}"></div>
+      <div class="field"><label>Company</label><input name="company" value="${t_esc(c.company||'')}"></div>
+      <div class="field-row">
+        <div class="field"><label>Phone</label><input name="phone" value="${t_esc(c.phone||'')}"></div>
+        <div class="field"><label>Email</label><input type="email" name="email" value="${t_esc(c.email||'')}"></div>
+      </div>
+      <div class="field"><label>Address</label><input name="address" value="${t_esc(c.address||'')}"></div>
+      <div class="field"><label>Notes</label><textarea name="notes" rows="2">${t_esc(c.notes||'')}</textarea></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancel-modal">Close</button>
+        <button type="submit" class="btn btn-primary">Save customer</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('cancel-modal').onclick = closeOverlay;
+  document.getElementById('customer-form').onsubmit = async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = Object.fromEntries(fd.entries());
+    Object.keys(body).forEach(k=>{ if(body[k]==='') body[k]=null; });
+    await sb(`customers?id=eq.${c.id}`, {method:'PATCH', body:JSON.stringify(body)});
+    closeOverlay(); toast('Customer updated'); loadAll();
+  };
 }
 
 function renderDayList(){
@@ -811,10 +893,11 @@ function bookingCardHtml(b){
   const driverTxt = b.drivers?.full_name || null;
   const vehicleTxt = b.vehicles?.plate_number || null;
   const unassigned = !b.assigned_driver_id || !b.assigned_vehicle_id;
+  const balance = (b.quoted_amount!=null) ? (b.quoted_amount - (b.amount_paid||0)) : null;
   return `
     <div class="bk-card ${unassigned?'unassigned':''} ${!b.active?'inactive':''}" data-id="${b.id}">
       <div class="bk-top">
-        <div><span class="bk-cust">${b.customer_name}</span> <span class="bk-id">${b.booking_id}</span></div>
+        <div><span class="bk-cust">${b.customer_name}</span> <span class="bk-id">${b.booking_id}</span>${b.is_round_trip?' <span class="round-trip-tag">Round trip</span>':''}</div>
         <span class="pay-badge ${payClass(b.status_payment)}">${b.status_payment}${!b.active?' · Cancelled':''}</span>
       </div>
       <div class="bk-meta">
@@ -823,6 +906,7 @@ function bookingCardHtml(b){
         <span>${b.pickup_location} → ${b.dropoff_location}</span>
         ${b.passenger_load_count?`<span>${b.passenger_load_count} pax</span>`:''}
         ${driverTxt ? `<span>${driverTxt}${vehicleTxt?' · '+vehicleTxt:''}</span>` : `<span class="unassigned-tag">Unassigned</span>`}
+        ${b.quoted_amount!=null ? `<span>${fmtMoney(b.quoted_amount)}${balance>0?` <span class="balance-due">(${fmtMoney(balance)} due)</span>`:''}</span>` : ''}
       </div>
     </div>`;
 }
@@ -901,6 +985,8 @@ function openBookingModal(booking){
     assigned_driver_id:'', assigned_vehicle_id:'', booked_by: state.user.full_name,
     passenger_names:'', pickup_location:'', dropoff_location:'', flight_number:'',
     emergency_contact: DEFAULT_EMERGENCY_CONTACT,
+    quoted_amount:null, amount_paid:0, booking_source:'', special_requirements:'',
+    is_round_trip:false, return_date:'', return_time:'', return_dropoff_location:'',
   };
   const locList = LOCATIONS.map(l=>`<option value="${l}">`).join('');
 
@@ -912,18 +998,29 @@ function openBookingModal(booking){
         <h4>Booking control</h4>
         <div class="field-row">
           <div class="field"><label>Booking date *</label><input type="date" name="booking_date" required value="${b.booking_date}"></div>
+          <div class="field"><label>Booking source</label>
+            <select name="booking_source"><option value="">—</option>${BOOKING_SOURCES.map(s=>`<option value="${s}" ${b.booking_source===s?'selected':''}>${s}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="field-row">
           <div class="field"><label>Status / Payment *</label>
             <select name="status_payment" required>${PAYMENT_STATUSES.map(s=>`<option value="${s}" ${b.status_payment===s?'selected':''}>${s}</option>`).join('')}</select>
           </div>
+          <div class="field"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Quoted amount (GYD)</label><input type="number" step="0.01" name="quoted_amount" value="${b.quoted_amount??''}"></div>
+          <div class="field"><label>Amount paid (GYD)</label><input type="number" step="0.01" name="amount_paid" value="${b.amount_paid??0}"></div>
         </div>
       </div>
 
       <div class="form-section">
         <h4>Trip &amp; service</h4>
         <div class="field-row">
-          <div class="field"><label>Customer name *</label><input name="customer_name" required value="${t_esc(b.customer_name)}"></div>
+          <div class="field"><label>Customer name *</label><input name="customer_name" required list="cust-list" value="${t_esc(b.customer_name)}"></div>
           <div class="field"><label>Pick up time * <span style="font-weight:400;color:var(--ink-soft);">(24-hr)</span></label>${timeInputHtml('pickup_time', b.pickup_time, true)}</div>
         </div>
+        <datalist id="cust-list">${state.customers.map(c=>`<option value="${t_esc(c.name)}">`).join('')}</datalist>
         <div class="field-row">
           <div class="field"><label>Passenger load count *</label><input type="number" min="1" name="passenger_load_count" required value="${b.passenger_load_count||''}"></div>
           <div class="field"><label>Transportation type *</label>
@@ -938,6 +1035,7 @@ function openBookingModal(booking){
             <select name="assigned_vehicle_id" ${can('operations.assign_driver_vehicle')?'':'disabled'}><option value="">Unassigned</option>${state.vehicles.map(v=>`<option value="${v.id}" ${b.assigned_vehicle_id===v.id?'selected':''}>${v.plate_number}</option>`).join('')}</select>
           </div>
         </div>
+        ${b.assigned_by_name ? `<p style="font-size:11.5px;color:var(--ink-soft);margin:-4px 0 10px;">Assigned by ${t_esc(b.assigned_by_name)}${b.assigned_at?' on '+fmtDate(b.assigned_at.slice(0,10)):''}</p>` : ''}
         <div class="field"><label>Booked by</label><input name="booked_by" value="${t_esc(b.booked_by||'')}"></div>
       </div>
 
@@ -953,11 +1051,32 @@ function openBookingModal(booking){
           <div class="field"><label>Flight #</label><input name="flight_number" value="${t_esc(b.flight_number||'')}"></div>
           <div class="field"><label>Emergency contact</label><input name="emergency_contact" value="${t_esc(b.emergency_contact||DEFAULT_EMERGENCY_CONTACT)}"></div>
         </div>
+        <div class="field"><label>Special requirements</label><input name="special_requirements" placeholder="e.g. wheelchair accessible, child seat" value="${t_esc(b.special_requirements||'')}"></div>
+        <div class="field" style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+          <input type="checkbox" name="is_round_trip" id="round-trip-check" style="width:auto;" ${b.is_round_trip?'checked':''}>
+          <label for="round-trip-check" style="margin:0;">This is a round trip</label>
+        </div>
+        <div id="return-fields" style="${b.is_round_trip?'':'display:none;'}margin-top:10px;">
+          <div class="field-row">
+            <div class="field"><label>Return date</label><input type="date" name="return_date" value="${b.return_date||''}"></div>
+            <div class="field"><label>Return time (24-hr)</label>${timeInputHtml('return_time', b.return_time, false)}</div>
+          </div>
+          <div class="field"><label>Return drop-off location</label><input name="return_dropoff_location" list="loc-list" value="${t_esc(b.return_dropoff_location||'')}"></div>
+        </div>
       </div>
 
       <div class="form-section">
         <h4>Dispatch notes (auto)</h4>
         <div class="notes-preview" id="notes-preview">${composeNotes(b)}</div>
+      </div>
+
+      <div class="form-section">
+        <h4>Internal trip notes</h4>
+        <div class="field">
+          ${can('operations.manage_trip_info')
+            ? `<textarea name="internal_notes" rows="2" placeholder="Internal-only — not shown to the customer, e.g. 'vehicle swapped last minute'">${t_esc(b.internal_notes||'')}</textarea>`
+            : `<p style="font-size:12.5px;color:var(--ink-soft);margin:0;">${b.internal_notes ? t_esc(b.internal_notes) : 'No internal notes.'}</p>`}
+        </div>
       </div>
 
       <div class="modal-actions" style="justify-content:space-between;">
@@ -973,6 +1092,9 @@ function openBookingModal(booking){
 
   const form = document.getElementById('booking-form');
   wireTimeInputs(form);
+  document.getElementById('round-trip-check').addEventListener('change', (e)=>{
+    document.getElementById('return-fields').style.display = e.target.checked ? 'block' : 'none';
+  });
   const preview = document.getElementById('notes-preview');
   function currentFormData(){
     const fd = new FormData(form);
@@ -1007,6 +1129,14 @@ function openBookingModal(booking){
       dropoff_location: raw.dropoff_location,
       flight_number: raw.flight_number || null,
       emergency_contact: raw.emergency_contact || DEFAULT_EMERGENCY_CONTACT,
+      special_requirements: raw.special_requirements || null,
+      booking_source: raw.booking_source || null,
+      quoted_amount: raw.quoted_amount ? parseFloat(raw.quoted_amount) : null,
+      amount_paid: raw.amount_paid ? parseFloat(raw.amount_paid) : 0,
+      is_round_trip: !!raw.is_round_trip,
+      return_date: raw.is_round_trip ? (raw.return_date || null) : null,
+      return_time: raw.is_round_trip ? (raw.return_time || null) : null,
+      return_dropoff_location: raw.is_round_trip ? (raw.return_dropoff_location || null) : null,
       dispatch_notes: composeNotes(raw),
       updated_at: new Date().toISOString(),
     };
@@ -1016,6 +1146,20 @@ function openBookingModal(booking){
     if(can('operations.assign_driver_vehicle')){
       body.assigned_driver_id = raw.assigned_driver_id || null;
       body.assigned_vehicle_id = raw.assigned_vehicle_id || null;
+    }
+    if(can('operations.manage_trip_info')){
+      body.internal_notes = raw.internal_notes || null;
+    }
+    // Link (or lazily create) a customer record so this booking has real customer history behind it
+    if(can('operations.create_bookings') || can('operations.edit_bookings')){
+      let cust = state.customers.find(c=>c.name.toLowerCase()===raw.customer_name.trim().toLowerCase());
+      if(!cust){
+        try{
+          const created = await sb('customers', {method:'POST', body:JSON.stringify({name: raw.customer_name.trim()})});
+          cust = created[0];
+        }catch(err){ /* non-fatal — booking still saves without a linked customer */ }
+      }
+      if(cust) body.customer_id = cust.id;
     }
     if(isEdit){
       await sb(`bookings?id=eq.${b.id}`, {method:'PATCH', body:JSON.stringify(body)});
@@ -1157,6 +1301,8 @@ function renderFuel(){
   }
   projFiltered.forEach(f=>{
     const recorded = amountIsRecorded(f.guyoil_amount);
+    const distance = (f.previous_odometer!=null && f.current_odometer!=null) ? (f.current_odometer - f.previous_odometer) : null;
+    const consumption = (distance!=null && distance>0 && f.liters_received) ? (distance/f.liters_received) : null;
     const card = document.createElement('div');
     card.className = 'fuel-card' + (recorded ? '' : ' awaiting');
     card.innerHTML = `
@@ -1172,6 +1318,8 @@ function renderFuel(){
         ${f.driver?`<span>Issued to ${f.driver}</span>`:''}
         ${f.requested_by?`<span>Req by ${f.requested_by}</span>`:''}
         ${f.fuel_type?`<span>${f.fuel_type}</span>`:''}
+        ${distance!=null?`<span>${distance.toLocaleString()} km</span>`:''}
+        ${consumption!=null?`<span>${consumption.toFixed(1)} km/L</span>`:''}
       </div>`;
     const canEditFuel = can('fuel.create_requisitions') || can('fuel.approve_requisitions') || can('fuel.update_records');
     if(canEditFuel) card.onclick = ()=>openFuelModal(f);
@@ -1197,8 +1345,8 @@ function openFuelModal(f){
   const d = f || {
     project: state.fuelProject, req_number:'', req_date: new Date().toISOString().slice(0,10),
     vehicle_reg:'', vehicle_type:'', fuel_type:'', requested_by:'', approved_by:'',
-    issued_date:'', driver:'', guyoil_amount:'', mileage:'', liters_received:'',
-    fuel_receipt_received_by:'', notes:'',
+    issued_date:'', driver:'', guyoil_amount:'', previous_odometer:'', current_odometer:'', liters_received:'',
+    price_per_liter:'', payment_method:'', fuel_receipt_received_by:'', notes:'',
   };
   openOverlay(`
     <h3>${isEdit? 'Requisition '+d.req_number : 'New fuel requisition'}</h3>
@@ -1245,8 +1393,16 @@ function openFuelModal(f){
           <div class="field"><label>Fuel receipt received by</label><input name="fuel_receipt_received_by" value="${t_esc(d.fuel_receipt_received_by||'')}"></div>
         </div>
         <div class="field-row">
-          <div class="field"><label>Mileage</label><input type="number" name="mileage" value="${d.mileage||''}"></div>
-          <div class="field"><label>Liters received</label><input type="number" name="liters_received" value="${d.liters_received||''}"></div>
+          <div class="field"><label>Liters received</label><input type="number" step="0.01" name="liters_received" value="${d.liters_received||''}"></div>
+          <div class="field"><label>Price per liter (GYD)</label><input type="number" step="0.01" name="price_per_liter" value="${d.price_per_liter||''}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Previous odometer (km)</label><input type="number" name="previous_odometer" value="${d.previous_odometer??''}"></div>
+          <div class="field"><label>Current odometer (km)</label><input type="number" name="current_odometer" value="${d.current_odometer??''}"></div>
+        </div>
+        <div class="notes-preview" id="consumption-preview">${consumptionPreview(d)}</div>
+        <div class="field" style="margin-top:12px;"><label>Payment method</label>
+          <select name="payment_method"><option value="">—</option>${FUEL_PAYMENT_METHODS.map(m=>`<option value="${m}" ${d.payment_method===m?'selected':''}>${m}</option>`).join('')}</select>
         </div>
         <div class="field">
           <label>Scan receipt</label>
@@ -1263,6 +1419,13 @@ function openFuelModal(f){
       </div>
     </form>
   `, true);
+
+  const fuelForm = document.getElementById('fuel-form');
+  function refreshConsumption(){
+    const fd = new FormData(fuelForm);
+    document.getElementById('consumption-preview').textContent = consumptionPreview(Object.fromEntries(fd.entries()));
+  }
+  fuelForm.querySelectorAll('input,select').forEach(el=>el.addEventListener('input', refreshConsumption));
 
   document.getElementById('cancel-modal').onclick = closeOverlay;
   document.getElementById('fuel-form').onsubmit = async (e)=>{
@@ -1283,8 +1446,11 @@ function openFuelModal(f){
       issued_date: raw.issued_date || null,
       driver: raw.driver || null,
       guyoil_amount: raw.guyoil_amount || null,
-      mileage: raw.mileage ? parseFloat(raw.mileage) : null,
+      previous_odometer: raw.previous_odometer ? parseFloat(raw.previous_odometer) : null,
+      current_odometer: raw.current_odometer ? parseFloat(raw.current_odometer) : null,
       liters_received: raw.liters_received ? parseFloat(raw.liters_received) : null,
+      price_per_liter: raw.price_per_liter ? parseFloat(raw.price_per_liter) : null,
+      payment_method: raw.payment_method || null,
       fuel_receipt_received_by: raw.fuel_receipt_received_by || null,
       notes: raw.notes || null,
       updated_by: state.user.full_name,
@@ -1400,6 +1566,41 @@ function renderProfile(){
               <div class="rmeta">${r.reason||''}${r.review_notes?' · '+r.review_notes:''}</div></div>
               <span class="req-status ${r.status}">${r.status}</span>
             </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="info-card">
+      <h3>Documents</h3>
+      ${(state.myDocuments||[]).length===0 ? '<p style="font-size:12.5px;color:var(--ink-soft);">No documents on file. HR manages document uploads.</p>' :
+        state.myDocuments.map(docItem=>{
+          const expiring = docItem.expiry_date && (new Date(docItem.expiry_date) - new Date()) < 30*86400000;
+          const expired = docItem.expiry_date && new Date(docItem.expiry_date) < new Date();
+          return `
+            <div class="request-row">
+              <div><div class="rtype">${docItem.document_type}</div>
+              <div class="rmeta">${docItem.expiry_date ? 'Expires '+fmtDate(docItem.expiry_date) : 'No expiry'}${docItem.notes?' · '+docItem.notes:''}</div></div>
+              ${expired ? '<span class="req-status Rejected">Expired</span>' : expiring ? '<span class="req-status Pending">Expiring soon</span>' : '<span class="req-status Approved">Valid</span>'}
+            </div>`;
+        }).join('')}
+    </div>
+
+    <div class="info-card">
+      <h3>Attendance <span style="font-weight:400;color:var(--ink-soft);font-size:11.5px;">(last 20 records)</span></h3>
+      ${(state.myAttendance||[]).length===0 ? '<p style="font-size:12.5px;color:var(--ink-soft);">No attendance recorded yet.</p>' :
+        state.myAttendance.map(a=>`
+          <div class="request-row">
+            <div><div class="rtype">${fmtDate(a.attendance_date)}</div>
+            <div class="rmeta">${a.clock_in||'—'} – ${a.clock_out||'—'}${a.notes?' · '+a.notes:''}</div></div>
+            <span class="req-status ${a.status==='Present'?'Approved':a.status==='Absent'?'Rejected':'Pending'}">${a.status}</span>
+          </div>`).join('')}
+    </div>
+
+    <div class="info-card">
+      <h3>Account</h3>
+      <div class="info-grid">
+        <div class="info-item"><label>Email</label><div>${state.user.email}</div></div>
+        <div class="info-item"><label>Role</label><div>${state.user.role}</div></div>
+        <div class="info-item"><label>Last login</label><div>${state.user.last_login ? new Date(state.user.last_login).toLocaleString() : '—'}</div></div>
       </div>
     </div>
   `;
@@ -1557,7 +1758,7 @@ async function reviewRequest(id, status){
   toast(`Request ${status.toLowerCase()}`); loadAll();
 }
 
-function openEmployeeModal(emp){
+async function openEmployeeModal(emp){
   const isEdit = !!emp;
   const d = emp || {
     full_name:'', preferred_name:'', date_of_birth:'', gender:'', phone:'', email:'', address:'',
@@ -1565,6 +1766,11 @@ function openEmployeeModal(emp){
     emergency_contact_name:'', emergency_contact_relationship:'', emergency_contact_phone:'', emergency_contact_phone_2:'',
     leave_balance_days: 14, notes:'',
   };
+
+  let empDocs = [], empAttendance = [];
+  if(isEdit && can('hr.manage_documents')) empDocs = await sb(`employee_documents?employee_id=eq.${emp.id}&select=*&order=created_at.desc`);
+  if(isEdit && can('hr.manage_attendance')) empAttendance = await sb(`attendance?employee_id=eq.${emp.id}&select=*&order=attendance_date.desc&limit=10`);
+
   openOverlay(`
     <h3>${isEdit? emp.full_name : 'New employee'}</h3>
     <form id="employee-form">
@@ -1619,7 +1825,45 @@ function openEmployeeModal(emp){
         <button type="submit" class="btn btn-primary">Save employee</button>
       </div>
     </form>
+
+    ${isEdit && can('hr.manage_documents') ? `
+      <div class="form-section">
+        <h4>Documents</h4>
+        ${empDocs.length===0 ? '<p style="font-size:12.5px;color:var(--ink-soft);">No documents yet.</p>' :
+          empDocs.map(dc=>`<div class="request-row"><div><div class="rtype">${dc.document_type}</div><div class="rmeta">${dc.expiry_date?'Expires '+fmtDate(dc.expiry_date):'No expiry'}</div></div>${dc.file_url?`<a href="${dc.file_url}" target="_blank" style="font-size:12px;">View</a>`:''}</div>`).join('')}
+        <form id="add-doc-form" style="margin-top:12px;">
+          <div class="field-row">
+            <div class="field"><label>Document type</label><input name="document_type" placeholder="e.g. Driver's License" required></div>
+            <div class="field"><label>Expiry date</label><input type="date" name="expiry_date"></div>
+          </div>
+          <div class="field"><label>File</label><input type="file" name="doc_file" accept="image/*,application/pdf"></div>
+          <button type="submit" class="btn btn-ghost btn-sm">Add document</button>
+        </form>
+      </div>
+    ` : ''}
+
+    ${isEdit && can('hr.manage_attendance') ? `
+      <div class="form-section">
+        <h4>Attendance <span style="font-weight:400;color:var(--ink-soft);font-size:11.5px;">(last 10)</span></h4>
+        ${empAttendance.length===0 ? '<p style="font-size:12.5px;color:var(--ink-soft);">No records yet.</p>' :
+          empAttendance.map(a=>`<div class="request-row"><div><div class="rtype">${fmtDate(a.attendance_date)}</div><div class="rmeta">${a.clock_in||'—'} – ${a.clock_out||'—'}</div></div><span class="req-status ${a.status==='Present'?'Approved':a.status==='Absent'?'Rejected':'Pending'}">${a.status}</span></div>`).join('')}
+        <form id="add-attendance-form" style="margin-top:12px;">
+          <div class="field-row">
+            <div class="field"><label>Date</label><input type="date" name="attendance_date" required value="${new Date().toISOString().slice(0,10)}"></div>
+            <div class="field"><label>Status</label>
+              <select name="status"><option>Present</option><option>Late</option><option>Absent</option><option>On Leave</option><option>Half Day</option></select>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Clock in</label>${timeInputHtml('clock_in','',false)}</div>
+            <div class="field"><label>Clock out</label>${timeInputHtml('clock_out','',false)}</div>
+          </div>
+          <button type="submit" class="btn btn-ghost btn-sm">Add record</button>
+        </form>
+      </div>
+    ` : ''}
   `, true);
+
   document.getElementById('cancel-modal').onclick = closeOverlay;
   document.getElementById('employee-form').onsubmit = async (e)=>{
     e.preventDefault();
@@ -1636,6 +1880,47 @@ function openEmployeeModal(emp){
     }
     closeOverlay(); loadAll();
   };
+
+  const docForm = document.getElementById('add-doc-form');
+  if(docForm){
+    wireTimeInputs(docForm);
+    docForm.onsubmit = async (e)=>{
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const raw = Object.fromEntries(fd.entries());
+      const file = fd.get('doc_file');
+      let file_url = null;
+      if(file && file.size>0){
+        const ext = (file.name.split('.').pop()||'jpg').toLowerCase();
+        const filename = `${emp.employee_no}-${raw.document_type}-${Date.now()}`.replace(/[^a-zA-Z0-9-]/g,'_') + '.' + ext;
+        const res = await fetch(`${SUPABASE_URL}/storage/v1/object/employee-documents/${filename}`, {
+          method:'POST', headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${session?session.access_token:SUPABASE_KEY}`, 'Content-Type':file.type, 'x-upsert':'true' }, body:file,
+        });
+        if(res.ok) file_url = `${SUPABASE_URL}/storage/v1/object/public/employee-documents/${filename}`;
+      }
+      await sb('employee_documents', {method:'POST', body:JSON.stringify({
+        employee_id: emp.id, document_type: raw.document_type, expiry_date: raw.expiry_date||null,
+        file_url, uploaded_by: state.user.full_name,
+      })});
+      toast('Document added'); closeOverlay(); openEmployeeModal(state.allEmployees.find(x=>x.id===emp.id));
+    };
+  }
+  const attForm = document.getElementById('add-attendance-form');
+  if(attForm){
+    wireTimeInputs(attForm);
+    attForm.onsubmit = async (e)=>{
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const raw = Object.fromEntries(fd.entries());
+      try{
+        await sb('attendance', {method:'POST', body:JSON.stringify({
+          employee_id: emp.id, attendance_date: raw.attendance_date, status: raw.status,
+          clock_in: raw.clock_in||null, clock_out: raw.clock_out||null, recorded_by: state.user.full_name,
+        })});
+        toast('Attendance recorded'); closeOverlay(); openEmployeeModal(state.allEmployees.find(x=>x.id===emp.id));
+      }catch(err){ alert('Could not save — a record for this date may already exist.'); }
+    };
+  }
 }
 </script>
 </body>
